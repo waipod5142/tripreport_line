@@ -166,14 +166,17 @@ export const deleteOrder = async (req: Request, res: Response) => {
 export const updateOrderStatus = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { status } = req.body;
+    const { status, preferredDate, preferredTimeSlot } = req.body;
     const validStatuses = ["pending", "confirmed", "scheduled", "in_transit", "delivered", "cancelled"];
     if (!validStatuses.includes(status)) {
       return res.status(400).json({ error: "Invalid status" });
     }
+    const updateFields: Record<string, unknown> = { status };
+    if (preferredDate)     updateFields.preferredDate     = preferredDate;
+    if (preferredTimeSlot) updateFields.preferredTimeSlot = preferredTimeSlot;
     const [updated] = await db
       .update(orders)
-      .set({ status })
+      .set(updateFields)
       .where(eq(orders.id, id))
       .returning();
     if (!updated) return res.status(404).json({ error: "Order not found" });

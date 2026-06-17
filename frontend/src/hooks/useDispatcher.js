@@ -12,7 +12,8 @@ export const useAllOrders = () =>
 export const useConfirmOrder = () => {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id) => updateOrderStatus({ id, status: "confirmed" }),
+    mutationFn: ({ id, preferredDate, preferredTimeSlot }) =>
+      updateOrderStatus({ id, status: "confirmed", preferredDate, preferredTimeSlot }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["allOrders"] }),
   });
 };

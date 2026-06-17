@@ -110,11 +110,28 @@ function StatTile({ label, value, color }) {
   );
 }
 
+
 /* ── Order card ────────────────────────────────────────────── */
 function OrderCard({ order, onConfirm, onAssign, onEdit, confirming }) {
   const qty = fmtQty(order);
   const photos = Array.isArray(order.sitePhotoUrls) ? order.sitePhotoUrls : [];
   const scheds = order.schedules ?? [];
+
+  const todayStr = new Date().toISOString().split("T")[0];
+  const [showPanel, setShowPanel]     = useState(false);
+  const [confirmDate, setConfirmDate] = useState(order.preferredDate ?? todayStr);
+  const [etaTime, setEtaTime] = useState(() => {
+    const s = order.preferredTimeSlot ?? "";
+    if (s.includes(":")) return s;
+    if (s === "afternoon") return "13:00";
+    if (s === "evening")   return "17:00";
+    return "08:00";
+  });
+
+  function submitConfirm() {
+    onConfirm({ id: order.id, preferredDate: confirmDate, preferredTimeSlot: etaTime });
+    setShowPanel(false);
+  }
 
   return (
     <div
@@ -215,10 +232,9 @@ function OrderCard({ order, onConfirm, onAssign, onEdit, confirming }) {
       </div>
 
       {/* Actions / truck pills */}
-      {order.status === "pending" && (
+      {order.status === "pending" && !showPanel && (
         <button
-          onClick={() => onConfirm(order.id)}
-          disabled={confirming}
+          onClick={() => setShowPanel(true)}
           style={{
             width: "100%",
             height: 36,
@@ -235,13 +251,93 @@ function OrderCard({ order, onConfirm, onAssign, onEdit, confirming }) {
             gap: 6,
           }}
         >
-          {confirming ? (
-            <Loader2 size={14} className="spin" />
-          ) : (
-            <CheckCircle size={14} />
-          )}
+          <CheckCircle size={14} />
           ยืนยันออเดอร์
         </button>
+      )}
+
+      {order.status === "pending" && showPanel && (
+        <div
+          style={{
+            border: "1.5px solid var(--primary-100)",
+            borderRadius: 12,
+            background: "var(--primary-50)",
+            padding: "12px 14px",
+            display: "flex",
+            flexDirection: "column",
+            gap: 10,
+          }}
+        >
+          <div style={{ fontSize: 12, fontWeight: 700, color: "var(--primary)" }}>
+            กำหนดวันและเวลาถึงหน้างาน (ETA)
+          </div>
+
+          {/* Date + time row */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+            <div>
+              <div style={{ fontSize: 11, color: "var(--ink-3)", marginBottom: 4 }}>วันที่จัดส่ง</div>
+              <input
+                type="date"
+                className="field"
+                value={confirmDate}
+                min={todayStr}
+                onChange={(e) => setConfirmDate(e.target.value)}
+                style={{ background: "var(--surface)" }}
+              />
+            </div>
+            <div>
+              <div style={{ fontSize: 11, color: "var(--ink-3)", marginBottom: 4 }}>เวลาถึง (ETA)</div>
+              <input
+                type="time"
+                className="field"
+                value={etaTime}
+                step={1800}
+                onChange={(e) => setEtaTime(e.target.value)}
+                style={{ background: "var(--surface)", fontFamily: "var(--mono)", fontWeight: 700 }}
+              />
+            </div>
+          </div>
+
+          {/* Confirm + cancel */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1.6fr", gap: 8, marginTop: 2 }}>
+            <button
+              onClick={() => setShowPanel(false)}
+              style={{
+                height: 36,
+                borderRadius: 10,
+                border: "1px solid var(--border-2)",
+                background: "var(--surface)",
+                color: "var(--ink-3)",
+                fontWeight: 600,
+                fontSize: 12.5,
+                cursor: "pointer",
+              }}
+            >
+              ยกเลิก
+            </button>
+            <button
+              onClick={submitConfirm}
+              disabled={confirming || !confirmDate || !etaTime}
+              style={{
+                height: 36,
+                borderRadius: 10,
+                border: "none",
+                background: confirming || !confirmDate || !etaTime ? "var(--surface-3)" : "var(--primary)",
+                color: confirming || !confirmDate || !etaTime ? "var(--ink-4)" : "#fff",
+                fontWeight: 700,
+                fontSize: 12.5,
+                cursor: confirming || !confirmDate || !etaTime ? "not-allowed" : "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 6,
+              }}
+            >
+              {confirming ? <Loader2 size={13} className="spin" /> : <CheckCircle size={13} />}
+              ยืนยัน & แจ้งลูกค้า
+            </button>
+          </div>
+        </div>
       )}
       {order.status === "confirmed" && (
         <button
@@ -1222,8 +1318,8 @@ export default function DispatcherDashboard() {
                   <div key={o.id} style={{ marginBottom: 10 }}>
                     <OrderCard
                       order={o}
-                      onConfirm={(id) => confirmOrder(id)}
-                      confirming={confirming && confirmingId === o.id}
+                      onConfirm={(data) => confirmOrder(data)}
+                      confirming={confirming && confirmingId?.id === o.id}
                     />
                   </div>
                 ))

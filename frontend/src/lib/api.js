@@ -65,8 +65,11 @@ export const getAllOrders = async () => {
   return data;
 };
 
-export const updateOrderStatus = async ({ id, status }) => {
-  const { data } = await api.patch(`/orders/${id}/status`, { status });
+export const updateOrderStatus = async ({ id, status, preferredDate, preferredTimeSlot }) => {
+  const body = { status };
+  if (preferredDate)     body.preferredDate     = preferredDate;
+  if (preferredTimeSlot) body.preferredTimeSlot = preferredTimeSlot;
+  const { data } = await api.patch(`/orders/${id}/status`, body);
   return data;
 };
 

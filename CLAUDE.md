@@ -7,14 +7,14 @@
 | Database schema (all 5 ConcreteFlow tables + role/phone on users) | ✅ Done — `db:push` applied |
 | Middleware: `requireAuth` + `requireRole` | ✅ Done |
 | Concrete Products CRUD + seed (7 ksc grades in DB) | ✅ Done |
-| Orders backend: `POST /api/orders`, `GET /api/orders/my` (with joins), `GET /api/orders`, `PATCH /api/orders/:id/status` | ✅ Done |
+| Orders backend: `POST /api/orders`, `GET /api/orders/my` (with joins), `GET /api/orders`, `PATCH /api/orders/:id/status` (also updates `preferredDate` + `preferredTimeSlot` when confirming) | ✅ Done |
 | User routes: `POST /sync`, `GET /me`, `PATCH /me`, `GET /` (admin), `PATCH /:id/role` (admin) | ✅ Done |
 | Cloudinary photo upload — backend uploads base64 → Cloudinary; stores `secure_url` in DB | ✅ Done |
 | `OrderPage` wired to real API (`useConcreteProducts` + `useCreateOrder`) | ✅ Done |
 | `MyOrdersPage` wired to real API (`useMyOrders` + `toUiOrder` normaliser) | ✅ Done |
 | Schedule routes/controller (`scheduleRoutes.ts` + `scheduleController.ts`) | ✅ Done — GET, POST, PUT (replace-all), PATCH/:id/status, DELETE; qty + conflict validation |
 | Truck routes/controller (`truckRoutes.ts` + `truckController.ts`) | ✅ Done — GET, POST/seed (5 trucks seeded), POST, PATCH |
-| `DispatcherDashboard` + inline `AssignDrawer` | ✅ Done — stats bar, order queues, multi-truck assign, edit mode (PUT), fleet panel |
+| `DispatcherDashboard` + inline `AssignDrawer` | ✅ Done — stats bar, order queues, ETA confirm panel (date + time picker before confirm), multi-truck assign, edit mode (PUT), fleet panel |
 | `TruckView` — 24-hour side-by-side Gantt (today + tomorrow) | ✅ Done — 64px/hr, sticky labels, auto-scroll to now, block click → status actions |
 | `useDispatcher.js` + `api.js` dispatcher functions | ✅ Done — all hooks + API helpers wired |
 | `MyOrdersPage` multi-truck support + null guards | ✅ Done — `schedules[]` array, `mapSched` helper, null-safe orderNumber |
@@ -137,7 +137,7 @@ contactPhone: text          // Thai mobile: 0XX-XXX-XXXX
 sitePhotoUrls: json
 
 preferredDate: date
-preferredTimeSlot: text     // "morning" | "afternoon" | "evening"
+preferredTimeSlot: text     // customer submits "morning"|"afternoon"|"evening"; dispatcher overwrites with specific ETA e.g. "13:30" when confirming
 specialInstructions: text
 totalAmount: numeric(12,2)
 createdAt, updatedAt: timestamp
@@ -185,13 +185,15 @@ createdAt, updatedAt: timestamp
 
 ## Time Slots
 
+Customers choose a preferred slot when placing an order:
+
 | Key | Thai label | Range |
 |---|---|---|
 | `morning` | ช่วงเช้า | 08:00–12:00 |
 | `afternoon` | ช่วงบ่าย | 13:00–17:00 |
 | `evening` | ช่วงเย็น | 17:00–19:00 |
 
-The customer's preferred slot is a hint. The dispatcher sets the precise `scheduledStartTime` / `scheduledEndTime` (30-min increments from 07:00 to 19:00).
+**Dispatcher confirm flow**: before confirming a pending order the dispatcher sets a specific ETA time (e.g. `13:30`) via an inline panel in the `DispatcherDashboard`. This overwrites `preferredTimeSlot` with the exact time string and saves it alongside `preferredDate` in the same `PATCH /api/orders/:id/status` call. The precise `scheduledStartTime` / `scheduledEndTime` (30-min increments 07:00–19:00) is then set separately in the `AssignDrawer` when assigning the truck.
 
 ---
 
@@ -237,7 +239,7 @@ POST   /api/orders                        [customer] Place new order (with conta
 GET    /api/orders                        [dispatcher|admin] All orders (filterable by status/date)
 GET    /api/orders/my                     [customer] Current user's orders
 GET    /api/orders/:id                    Owner or dispatcher — order detail with items + schedule
-PATCH  /api/orders/:id/status             [dispatcher|admin] Update order status → triggers LINE notification
+PATCH  /api/orders/:id/status             [dispatcher|admin] Update order status → triggers LINE notification; also accepts optional `preferredDate` + `preferredTimeSlot` (dispatcher sets ETA when confirming)
 DELETE /api/orders/:id                    [customer] Cancel pending order
 ```
 
@@ -344,7 +346,7 @@ Backend fires LINE Messaging API (`/v2/bot/message/push`) on status change. Phon
 
 ### Order queue (left column)
 - **รอจัดคิวรถ** (confirmed): each row has "จัดคิว" button → opens AssignDrawer
-- **ออเดอร์ใหม่ รอยืนยัน** (pending): "ยืนยัน" button confirms → moves to confirmed queue
+- **ออเดอร์ใหม่ รอยืนยัน** (pending): "ยืนยันออเดอร์" button expands an **inline ETA panel** — dispatcher picks delivery date + specific ETA time (e.g. `13:30`) before confirming → saves date+time to DB and moves order to confirmed queue
 - **จัดคิวแล้ว / กำลังส่ง**: read-only rows
 
 ### AssignDrawer (right slide-in panel, 430 px wide)
@@ -624,6 +626,8 @@ Role guards are enforced by the ConcreteShell sidebar nav and backend `requireRo
 
 ## Environment Variables
 
+Both `.env` files are listed in `.gitignore` (`.env` / `.env.*` pattern) and must never be committed.
+
 ### Backend (`backend/.env`)
 ```
 PORT=3000
@@ -692,7 +696,7 @@ npm run start          # runs DB push then starts Express (serves frontend/dist)
 - **Edit mode (PUT)**: `replaceSchedule` atomically deletes all existing rows for the order and re-inserts the new `assignments[]`. Blocked if any existing row has `status = "in_transit"`.
 - **Conflict check in edit mode**: Both server (`s.orderId === orderId` skip) and client (`isEdit && s.orderId === order.id` skip) exclude the order's own existing rows when checking for time overlaps.
 - **Capacity check**: Sum of `order_items.quantityM3` for all orders assigned to a truck on a given day must not exceed `trucks.capacity`. Fleet panel in `DispatcherDashboard` shows 3 states: ว่าง (green) / ติดคิวพรุ่งนี้ (amber) / ติดคิววันนี้ (sky).
-- **Time slots**: `preferredTimeSlot` (morning / afternoon / evening) from the customer is a hint. The dispatcher sets the precise `scheduledStartTime` / `scheduledEndTime` in 30-minute increments.
+- **ETA on confirm**: `preferredTimeSlot` starts as a customer hint (morning / afternoon / evening). When the dispatcher confirms a pending order they overwrite it with a specific time string (e.g. `"13:30"`) via the inline ETA panel. The precise `scheduledStartTime` / `scheduledEndTime` for the truck is then set separately in the `AssignDrawer` (30-min increments 07:00–19:00).
 - **Small trucks**: รถโม่เล็ก (cap 2 คิว) are appropriate for narrow-alley sites (ซอยแคบ). AssignDrawer shows ⚠ warning when `quantityM3 > truck.capacity`.
 - **Real-time updates**: Use TanStack Query polling (`refetchInterval: 30_000`) on the `LiveMonitor` and `ScheduleBoardPage`. WebSocket layer is a future enhancement.
 
@@ -710,7 +714,7 @@ npm run start          # runs DB push then starts Express (serves frontend/dist)
 8. ✅ **Schedule routes** — `GET`, `POST` (multi-truck, qty+conflict check), `PUT` (replace-all edit mode, blocks in_transit), `PATCH/:id/status`, `DELETE/:id`; `scheduleController.ts`
 9. ✅ **OrderPage** — 3-step form wired to real API; fetches grades from DB; submits to `POST /api/orders`; loading + error states
 10. ✅ **MyOrdersPage** — `useMyOrders` hook; `toUiOrder` + `mapSched` normaliser; all trucks in `schedules[]` array; null-safe `orderNumber`; loading + error + empty states
-11. ✅ **DispatcherDashboard** — stats bar; pending/confirmed/scheduled queues; inline `AssignDrawer` with multi-truck rows, qty allocation guard, conflict check; edit mode via PUT; fleet panel (3-state busy)
+11. ✅ **DispatcherDashboard** — stats bar; pending/confirmed/scheduled queues; inline ETA confirm panel (date + specific time picker before confirm, saves to `preferredDate`+`preferredTimeSlot`); inline `AssignDrawer` with multi-truck rows, qty allocation guard, conflict check; edit mode via PUT; fleet panel (3-state busy)
 12. ✅ **TruckView** — 24-hr side-by-side Gantt (today + tomorrow); 64px/hr; sticky truck labels; auto-scroll to current time; block click → status actions
 13. ⬜ **LINE service** — `lineNotify.ts` push helper wired to status changes
 14. ⬜ **Schedule Board Page** (`ScheduleBoardPage.jsx`) — classic truck-column Gantt (columns = trucks, rows = 07:00–19:00 timeslots)
