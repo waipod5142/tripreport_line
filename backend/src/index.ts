@@ -23,7 +23,7 @@ app.use(express.urlencoded({ extended: true })); // parses form data (like HTML 
 
 app.get("/api/health", (req, res) => {
   res.json({
-    message: "Welcome to Productify API - Powered by PostgreSQL, Drizzle ORM & Clerk Auth",
+    message: "Welcome to Concrete Ordering API - Powered by PostgreSQL, Drizzle ORM & Clerk Auth",
     endpoints: {
       users: "/api/users",
       products: "/api/products",

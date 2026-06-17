@@ -1,5 +1,5 @@
 {
-  "name": "productify",
+  "name": "concrete-ordering",
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
@@ -12,14 +12,14 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/burakorkmez/productify.git"
+    "url": "git+https://github.com/waipod5142/concreteorder.git"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
   "bugs": {
-    "url": "https://github.com/burakorkmez/productify/issues"
+    "url": "https://github.com/waipod5142/concreteorder/issues"
   },
-  "homepage": "https://github.com/burakorkmez/productify#readme"
+  "homepage": "https://github.com/waipod5142/concreteorder#readme"
 }
