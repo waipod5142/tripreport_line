@@ -29,7 +29,7 @@ function App() {
 
   return (
     <Routes>
-      {/* Legacy Productify layout */}
+      {/* Legacy Concrete Ordering layout */}
       <Route element={<LegacyLayout />}>
         <Route path="/" element={<HomePage />} />
         <Route path="/product/:id" element={<ProductPage />} />
