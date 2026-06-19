@@ -14,10 +14,10 @@
 | `MyOrdersPage` wired to real API (`useMyOrders` + `toUiOrder` normaliser) | ✅ Done |
 | Schedule routes/controller (`scheduleRoutes.ts` + `scheduleController.ts`) | ✅ Done — GET, POST, PUT (replace-all), PATCH/:id/status, DELETE; qty + conflict validation |
 | Truck routes/controller (`truckRoutes.ts` + `truckController.ts`) | ✅ Done — GET, POST/seed (5 trucks seeded), POST, PATCH |
-| `DispatcherDashboard` + inline `AssignDrawer` | ✅ Done — stats bar, order queues, ETA confirm panel (date + time picker before confirm), multi-truck assign, edit mode (PUT), fleet panel |
+| `DispatcherDashboard` + inline `AssignDrawer` | ✅ Done — **schedule-then-confirm flow**: single "รอจัดคิวรถโม่" queue (pending+confirmed); assign drawer with **AI rule-based scheduler** (lead-time + stagger), multi-truck assign, qty/conflict guards, edit mode (PUT), fleet panel |
 | `TruckView` — 24-hour side-by-side Gantt (today + tomorrow) | ✅ Done — 64px/hr, sticky labels, auto-scroll to now, block click → status actions |
 | `useDispatcher.js` + `api.js` dispatcher functions | ✅ Done — all hooks + API helpers wired |
-| `MyOrdersPage` multi-truck support + null guards | ✅ Done — `schedules[]` array, `mapSched` helper, null-safe orderNumber |
+| `MyOrdersPage` multi-truck support + null guards | ✅ Done — `schedules[]` array, `mapSched` helper, null-safe orderNumber; pipeline tracker order (รับคำสั่งซื้อ → จัดคิวรถโม่ → ยืนยันออเดอร์ → กำลังจัดส่ง → ส่งสำเร็จ); delete button on pending order cards (2-step confirm) |
 | LINE service (`lineNotify.ts`) | ⬜ Pending |
 | Live Monitor (`LiveMonitor.jsx`) | ⬜ Pending |
 | Schedule Board Page (`ScheduleBoardPage.jsx`) — classic truck-column Gantt | ⬜ Pending |
@@ -193,7 +193,9 @@ Customers choose a preferred slot when placing an order:
 | `afternoon` | ช่วงบ่าย | 13:00–17:00 |
 | `evening` | ช่วงเย็น | 17:00–19:00 |
 
-**Dispatcher confirm flow**: before confirming a pending order the dispatcher sets a specific ETA time (e.g. `13:30`) via an inline panel in the `DispatcherDashboard`. This overwrites `preferredTimeSlot` with the exact time string and saves it alongside `preferredDate` in the same `PATCH /api/orders/:id/status` call. The precise `scheduledStartTime` / `scheduledEndTime` (30-min increments 07:00–19:00) is then set separately in the `AssignDrawer` when assigning the truck.
+**Schedule-then-confirm flow**: the dispatcher does **not** confirm an ETA blind. Instead, truck allocation happens **first** — you can only promise a delivery time a truck is actually free for. A new order goes straight from the "รอจัดคิวรถโม่" queue into the `AssignDrawer`, where the dispatcher (helped by the AI scheduler) picks truck(s) + the precise `scheduledStartTime` / `scheduledEndTime` (30-min increments 07:00–19:00). Submitting books the trucks **and** confirms ETA · qty · spec back to the customer in one action — the order moves `pending → scheduled` directly.
+
+> The standalone "confirm ETA" step (`PATCH /api/orders/:id/status` with `preferredDate` + `preferredTimeSlot`, `useConfirmOrder`) is no longer used by the dashboard UI, though the endpoint still accepts those fields. The customer's `preferredTimeSlot` remains the **requested** site-arrival time; the booked window lives in `delivery_schedules`.
 
 ---
 
@@ -201,13 +203,14 @@ Customers choose a preferred slot when placing an order:
 
 ```
 รอยืนยัน (pending)
-  └─► ยืนยันแล้ว (confirmed)    dispatcher ยืนยัน
-        └─► จัดคิวแล้ว (scheduled)  dispatcher assign truck + driver
-              └─► กำลังจัดส่ง (in_transit)  driver ออกรถ
-                    └─► ส่งสำเร็จ (delivered)   driver ยืนยันส่ง
+  └─► จัดคิวแล้ว (scheduled)  dispatcher allocates truck(s) → books + confirms customer (one step)
+        └─► กำลังจัดส่ง (in_transit)  driver ออกรถ
+              └─► ส่งสำเร็จ (delivered)   driver ยืนยันส่ง
 
 Any state ──► ยกเลิก (cancelled)
 ```
+
+`confirmed` still exists as a status (an order reverts to it if all its schedule rows are deleted) and such orders re-appear in the "รอจัดคิวรถโม่" queue, but the normal path now skips it: scheduling a `pending` order moves it straight to `scheduled`.
 
 Each transition sends an automated LINE message to the customer (see LINE Integration section).
 
@@ -312,7 +315,7 @@ Backend fires LINE Messaging API (`/v2/bot/message/push`) on status change. Phon
 
 ### Step 2 — หน้างาน & เวลา (Job Site & Time)
 - Site picker (2-col grid of Bangkok areas with area + label)
-- Date input (defaults to today)
+- Date input (defaults to **tomorrow**; min = today)
 - Time-slot buttons: ช่วงเช้า / ช่วงบ่าย / ช่วงเย็น
 - Delivery note textarea
 
@@ -342,21 +345,31 @@ Backend fires LINE Messaging API (`/v2/bot/message/push`) on status change. Phon
 ## Dispatcher Dashboard
 
 ### Stats bar (5 tiles)
-รอยืนยัน · รอจัดคิว · กำลังจัดส่ง · ปริมาณวันนี้ (คิว) · ยอดขายวันนี้ (฿)
+รอจัดคิวรถ (pending+confirmed) · จัดคิวแล้ว (scheduled) · กำลังจัดส่ง · ปริมาณวันนี้ (คิว) · ยอดขายวันนี้ (฿)
 
 ### Order queue (left column)
-- **รอจัดคิวรถ** (confirmed): each row has "จัดคิว" button → opens AssignDrawer
-- **ออเดอร์ใหม่ รอยืนยัน** (pending): "ยืนยันออเดอร์" button expands an **inline ETA panel** — dispatcher picks delivery date + specific ETA time (e.g. `13:30`) before confirming → saves date+time to DB and moves order to confirmed queue
-- **จัดคิวแล้ว / กำลังส่ง**: read-only rows
+- **รอจัดคิวรถโม่** — single queue of all orders awaiting allocation (`pending` **and** any re-opened `confirmed`). Each card's primary action is **"จัดคิวรถ & ยืนยันลูกค้า"** → opens the `AssignDrawer`. Scheduling is the first dispatcher action; confirmation to the customer happens *as part of* it.
+- **กำลังดำเนินการ** (scheduled / in_transit): each scheduled row shows its truck pills + an "แก้ไขการจัดคิว" button (opens drawer in edit mode → PUT).
 
-### AssignDrawer (right slide-in panel, 430 px wide)
-1. Order summary card (customer name, grade, คิว, หน้างาน, time slot, note)
-2. **ข้อมูลอ้างอิงหน้างาน** — if order has `geo` or `sitePhotoUrls`: shows clickable Maps link + photo thumbnails
-3. Truck picker (card list): shows reg, type, capacity; conflict-checked (ติดคิว badge if time overlaps), capacity warning if qty > cap
-4. Driver select dropdown
-5. Time-window selects (start/end from 30-min slots 07:00–19:00); "ช่วงเวลานี้จะถูกส่งให้ลูกค้าทาง LINE" note
+### AssignDrawer (right slide-in panel, ~460 px wide) — schedule + confirm in one step
+1. Order summary card (สินค้า/grade, ปริมาณ, ลูกค้า, โทร, หน้างาน, วันที่, **เวลาถึง = customer's requested ETA**, note) — this surfaces the product spec, qty, and requested time the customer keyed in
+2. **ข้อมูลอ้างอิงหน้างาน** — if order has `deliveryGeoLink` or `sitePhotoUrls`: clickable Maps link + photo thumbnails
+3. Delivery date picker (defaults to `preferredDate`)
+4. **✨ แนะนำการจัดรถอัตโนมัติ (AI)** button — rule-based scheduler pre-fills truck rows from fleet availability (see *AI Fleet Scheduler* below); shows a Thai reason strip + "ตรวจสอบและปรับแก้ได้ก่อนกดยืนยัน"
+5. Multi-truck rows: per-row truck select (reg · type · capacity), qty (±0.5, capacity-warned), start/end time selects (30-min slots 07:00–19:00); conflict-checked (ติดคิว badge); running allocated/total qty guard (`remaining < 0` blocks submit)
 6. Dispatcher notes textarea
-7. Submit: "ยืนยันจัดคิว & แจ้งลูกค้า" — posts to `/api/schedule`, fires LINE dispatch card; toast confirmation
+7. Submit: **"ยืนยันจัดคิว & แจ้งลูกค้า"** — posts to `/api/schedule` → books trucks, moves order to `scheduled`, fires LINE dispatch card
+
+### AI Fleet Scheduler (rule-based, client-side)
+Lives in `suggestAssignment()` in `DispatcherDashboard.jsx`. Deterministic, instant, no API key. Designed as a pure function so a Claude-LLM backend could later replace the heuristic without UI changes.
+
+Cycle parameters (hours): `LEAD_HOURS = 1` (booking leads site-arrival, sparing time for loading + outbound travel), `TRIP_HOURS = 2` (total truck occupancy: load → deliver → unload → return), `STAGGER_HOURS = 1` (each subsequent truck's site arrival is offset so trucks don't queue at the site).
+
+- `bookingWindow(siteEta, i)` → i-th truck's window: `start = siteEta + i − 1hr`, `end = start + 2hr`, clamped to plant hours **07:00–19:00**.
+  - Example, customer ETA **08:00**: truck 1 arrives 08:00 / booked **07:00–09:00**; truck 2 arrives 09:00 / booked **08:00–10:00**; truck 3 arrives 10:00 / booked **09:00–11:00**.
+- Allocation: prefers the **smallest single free truck** whose capacity fits the whole order; otherwise **splits across the largest free trucks**, each on its own staggered window.
+- Free-truck test runs **per truck's own window** (edit-mode aware: ignores the order's own existing rows), so a split delivery can reuse the fleet across consecutive hours without false conflicts.
+- The dispatcher only ever gets a pre-fill — every row stays editable and the qty/conflict/capacity guards still gate the final submit.
 
 ### Right column (sticky)
 - Live Bangkok map (mini, 250 px tall) — truck positions + delivery pins
@@ -585,13 +598,13 @@ frontend/src/
 5. **Step 3** — Enter contact name + Thai mobile; review full summary + price; submit → `POST /api/orders`
 6. Redirect to `MyOrdersPage` — order appears as **รอยืนยัน**; LINE confirmation fires
 
-### 2. Dispatcher Manages Schedule
-1. `DispatcherDashboard` shows confirmed orders in "รอจัดคิวรถ" queue
-2. Click order row / "จัดคิว" button → `AssignDrawer` slides in
-3. Drawer shows: order summary + customer's attached geo link + photos
-4. Dispatcher selects truck (conflict + capacity checked), driver, and precise time window
-5. Submit → `POST /api/schedule` → order moves to **จัดคิวแล้ว**; LINE dispatch confirmation card sent automatically
-6. `ScheduleBoardPage` renders the timeline grid for the full day
+### 2. Dispatcher Schedules Then Confirms
+1. `DispatcherDashboard` shows new orders in the single **"รอจัดคิวรถโม่"** queue (pending + confirmed)
+2. Click **"จัดคิวรถ & ยืนยันลูกค้า"** → `AssignDrawer` slides in
+3. Drawer shows: order summary (product spec, qty, requested ETA) + customer's geo link + photos
+4. Dispatcher clicks **✨ แนะนำการจัดรถอัตโนมัติ (AI)** → rows pre-fill with free truck(s) on lead-time + staggered windows (or fills manually); conflict + capacity + qty guards apply
+5. Submit **"ยืนยันจัดคิว & แจ้งลูกค้า"** → `POST /api/schedule` → books trucks, order moves **pending → จัดคิวแล้ว (scheduled)**; LINE dispatch confirmation card sent automatically
+6. `ScheduleBoardPage` / `TruckView` render the timeline grid for the day
 
 ### 3. Live Monitoring
 1. `LiveMonitor` loads all scheduled/in-transit/delivered orders
@@ -696,7 +709,13 @@ npm run start          # runs DB push then starts Express (serves frontend/dist)
 - **Edit mode (PUT)**: `replaceSchedule` atomically deletes all existing rows for the order and re-inserts the new `assignments[]`. Blocked if any existing row has `status = "in_transit"`.
 - **Conflict check in edit mode**: Both server (`s.orderId === orderId` skip) and client (`isEdit && s.orderId === order.id` skip) exclude the order's own existing rows when checking for time overlaps.
 - **Capacity check**: Sum of `order_items.quantityM3` for all orders assigned to a truck on a given day must not exceed `trucks.capacity`. Fleet panel in `DispatcherDashboard` shows 3 states: ว่าง (green) / ติดคิวพรุ่งนี้ (amber) / ติดคิววันนี้ (sky).
-- **ETA on confirm**: `preferredTimeSlot` starts as a customer hint (morning / afternoon / evening). When the dispatcher confirms a pending order they overwrite it with a specific time string (e.g. `"13:30"`) via the inline ETA panel. The precise `scheduledStartTime` / `scheduledEndTime` for the truck is then set separately in the `AssignDrawer` (30-min increments 07:00–19:00).
+- **Schedule before confirm**: truck allocation drives the customer confirmation, not the reverse. A `pending` order is scheduled directly (`pending → scheduled`); the booked `scheduledStartTime`/`scheduledEndTime` *is* the ETA confirmed to the customer. `preferredTimeSlot` stays as the customer's **requested** site-arrival time (a hint for the scheduler), never overwritten by the dashboard.
+- **AI rule-based scheduler** (`suggestAssignment()` in `DispatcherDashboard.jsx`): deterministic, client-side pre-fill of the assign rows.
+  - **Lead time** `LEAD_HOURS = 1`: a truck's booking starts 1 hr before its site-arrival ETA (sparing concrete loading + outbound travel). Customer ETA 08:00 → first truck booked **07:00–09:00**.
+  - **Trip length** `TRIP_HOURS = 2`: booking window = full round trip (load → deliver → unload → return).
+  - **Stagger** `STAGGER_HOURS = 1`: each subsequent truck's site arrival is offset +1 hr, so trucks don't queue at the site (truck 2 arrives 09:00 → booked 08:00–10:00; truck 3 arrives 10:00 → booked 09:00–11:00).
+  - `bookingWindow(siteEta, i)` computes the i-th window, clamped to plant hours 07:00–19:00. Free-truck test runs per truck's own window (edit-mode aware).
+  - Allocation: smallest single free truck that fits the whole order, else split across the largest free trucks. Output is a pre-fill only — all rows stay editable and the qty/conflict/capacity guards still gate submit.
 - **Small trucks**: รถโม่เล็ก (cap 2 คิว) are appropriate for narrow-alley sites (ซอยแคบ). AssignDrawer shows ⚠ warning when `quantityM3 > truck.capacity`.
 - **Real-time updates**: Use TanStack Query polling (`refetchInterval: 30_000`) on the `LiveMonitor` and `ScheduleBoardPage`. WebSocket layer is a future enhancement.
 
@@ -714,7 +733,7 @@ npm run start          # runs DB push then starts Express (serves frontend/dist)
 8. ✅ **Schedule routes** — `GET`, `POST` (multi-truck, qty+conflict check), `PUT` (replace-all edit mode, blocks in_transit), `PATCH/:id/status`, `DELETE/:id`; `scheduleController.ts`
 9. ✅ **OrderPage** — 3-step form wired to real API; fetches grades from DB; submits to `POST /api/orders`; loading + error states
 10. ✅ **MyOrdersPage** — `useMyOrders` hook; `toUiOrder` + `mapSched` normaliser; all trucks in `schedules[]` array; null-safe `orderNumber`; loading + error + empty states
-11. ✅ **DispatcherDashboard** — stats bar; pending/confirmed/scheduled queues; inline ETA confirm panel (date + specific time picker before confirm, saves to `preferredDate`+`preferredTimeSlot`); inline `AssignDrawer` with multi-truck rows, qty allocation guard, conflict check; edit mode via PUT; fleet panel (3-state busy)
+11. ✅ **DispatcherDashboard** — stats bar; single "รอจัดคิวรถโม่" queue (schedule-then-confirm flow, `pending → scheduled` directly); inline `AssignDrawer` with AI rule-based scheduler (lead-time + stagger), multi-truck rows, qty allocation guard, conflict check; edit mode via PUT; fleet panel (3-state busy)
 12. ✅ **TruckView** — 24-hr side-by-side Gantt (today + tomorrow); 64px/hr; sticky truck labels; auto-scroll to current time; block click → status actions
 13. ⬜ **LINE service** — `lineNotify.ts` push helper wired to status changes
 14. ⬜ **Schedule Board Page** (`ScheduleBoardPage.jsx`) — classic truck-column Gantt (columns = trucks, rows = 07:00–19:00 timeslots)

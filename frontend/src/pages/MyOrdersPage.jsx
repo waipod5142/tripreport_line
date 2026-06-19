@@ -65,8 +65,8 @@ const STATUS_META = {
 const PIPELINE = ["pending", "confirmed", "scheduled", "in_transit", "delivered"];
 const PIPELINE_LABELS = {
   pending:    "รับคำสั่งซื้อ",
-  confirmed:  "ยืนยันออเดอร์",
-  scheduled:  "จัดคิวรถโม่",
+  confirmed:  "จัดคิวรถโม่",
+  scheduled:  "ยืนยันออเดอร์",
   in_transit: "กำลังจัดส่ง",
   delivered:  "ส่งสำเร็จ",
 };
@@ -472,47 +472,6 @@ export default function MyOrdersPage() {
                       {order.status === "in_transit" && (
                         <div style={{ fontSize: 11.5, color: "var(--st-transit)", fontWeight: 600 }}>ETA ~{order.etaMin} นาที</div>
                       )}
-                      {order.status === "pending" && (
-                        deletingId === order.id ? (
-                          <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--ink-3)" }}>
-                            <Loader2 size={13} className="spin" style={{ color: "var(--danger)" }} />
-                            <span>กำลังลบ…</span>
-                          </div>
-                        ) : confirmId === order.id ? (
-                          <div
-                            style={{ display: "flex", alignItems: "center", gap: 6 }}
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <span style={{ fontSize: 12, color: "var(--ink-2)", fontWeight: 600, whiteSpace: "nowrap" }}>ยืนยันยกเลิก?</span>
-                            <button
-                              onClick={() => confirmDelete(order.id)}
-                              style={{ padding: "3px 10px", borderRadius: 7, border: "none", background: "var(--danger)", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
-                            >
-                              ใช่
-                            </button>
-                            <button
-                              onClick={() => setConfirmId(null)}
-                              style={{ padding: "3px 10px", borderRadius: 7, border: "1px solid var(--border-2)", background: "var(--surface-3)", color: "var(--ink-2)", fontSize: 12, fontWeight: 600, cursor: "pointer" }}
-                            >
-                              ไม่
-                            </button>
-                          </div>
-                        ) : (
-                          <button
-                            onClick={(e) => { e.stopPropagation(); setConfirmId(order.id); }}
-                            style={{
-                              display: "flex", alignItems: "center", gap: 5,
-                              padding: "4px 10px", borderRadius: 8, border: "1px solid var(--border-2)",
-                              background: "var(--surface-3)", color: "var(--ink-3)",
-                              fontSize: 12, fontWeight: 600, cursor: "pointer", transition: ".14s",
-                            }}
-                            onMouseEnter={(e) => { e.currentTarget.style.borderColor = "var(--danger)"; e.currentTarget.style.color = "var(--danger)"; e.currentTarget.style.background = "#FCEBEA"; }}
-                            onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--border-2)"; e.currentTarget.style.color = "var(--ink-3)"; e.currentTarget.style.background = "var(--surface-3)"; }}
-                          >
-                            <Trash2 size={13} /> ยกเลิก
-                          </button>
-                        )
-                      )}
                     </div>
                   </div>
 
@@ -534,6 +493,45 @@ export default function MyOrdersPage() {
                   )}
 
                   <OrderTracker order={order} />
+
+                  {/* Delete button — pending orders only */}
+                  {order.status === "pending" && (
+                    <div
+                      style={{ marginTop: 12 }}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {deletingId === order.id ? (
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, height: 36, fontSize: 12.5, color: "var(--ink-3)" }}>
+                          <Loader2 size={13} className="spin" style={{ color: "var(--danger)" }} />
+                          กำลังลบออเดอร์…
+                        </div>
+                      ) : confirmId === order.id ? (
+                        <div style={{ display: "flex", gap: 8 }}>
+                          <button
+                            onClick={() => setConfirmId(null)}
+                            style={{ flex: 1, height: 36, borderRadius: 10, border: "1px solid var(--border-2)", background: "var(--surface-3)", color: "var(--ink-2)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}
+                          >
+                            ยกเลิก
+                          </button>
+                          <button
+                            onClick={() => confirmDelete(order.id)}
+                            style={{ flex: 1, height: 36, borderRadius: 10, border: "none", background: "var(--danger)", color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}
+                          >
+                            <Trash2 size={13} /> ยืนยันลบออเดอร์
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => setConfirmId(order.id)}
+                          style={{ width: "100%", height: 36, borderRadius: 10, border: "1px solid var(--border-2)", background: "var(--surface-3)", color: "var(--ink-3)", fontSize: 13, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, transition: ".14s" }}
+                          onMouseEnter={(e) => { e.currentTarget.style.borderColor = "var(--danger)"; e.currentTarget.style.color = "var(--danger)"; e.currentTarget.style.background = "#FCEBEA"; }}
+                          onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--border-2)"; e.currentTarget.style.color = "var(--ink-3)"; e.currentTarget.style.background = "var(--surface-3)"; }}
+                        >
+                          <Trash2 size={13} /> ลบออเดอร์
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
               );
             })}

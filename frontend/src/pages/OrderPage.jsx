@@ -403,7 +403,7 @@ export default function OrderPage() {
   const [qtyStr, setQtyStr] = useState("0");
   const [site, setSite] = useState("");
   const [arrivalTime, setArrivalTime] = useState("08:00");
-  const [date, setDate] = useState(new Date());
+  const [date, setDate] = useState(() => { const d = new Date(); d.setDate(d.getDate() + 1); return d; });
   const [note, setNote] = useState("");
   const [geo, setGeo] = useState(null);
   const [photos, setPhotos] = useState([]);
@@ -488,7 +488,7 @@ export default function OrderPage() {
     setQtyStr("4");
     setSite("");
     setArrivalTime("08:00");
-    setDate(new Date());
+    setDate(() => { const d = new Date(); d.setDate(d.getDate() + 1); return d; });
     setNote("");
     setGeo(null);
     setPhotos([]);

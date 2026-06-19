@@ -6,7 +6,6 @@ import {
   Clock,
   MapPin,
   ExternalLink,
-  CheckCircle,
   Package,
   X,
   AlertTriangle,
@@ -14,11 +13,11 @@ import {
   Plus,
   Minus,
   Pencil,
+  Sparkles,
 } from "lucide-react";
 import ConcreteShell from "../components/ConcreteShell";
 import {
   useAllOrders,
-  useConfirmOrder,
   useTrucks,
   useSeedTrucks,
   useSchedules,
@@ -112,26 +111,10 @@ function StatTile({ label, value, color }) {
 
 
 /* ── Order card ────────────────────────────────────────────── */
-function OrderCard({ order, onConfirm, onAssign, onEdit, confirming }) {
+function OrderCard({ order, onAssign, onEdit }) {
   const qty = fmtQty(order);
   const photos = Array.isArray(order.sitePhotoUrls) ? order.sitePhotoUrls : [];
   const scheds = order.schedules ?? [];
-
-  const todayStr = new Date().toISOString().split("T")[0];
-  const [showPanel, setShowPanel]     = useState(false);
-  const [confirmDate, setConfirmDate] = useState(order.preferredDate ?? todayStr);
-  const [etaTime, setEtaTime] = useState(() => {
-    const s = order.preferredTimeSlot ?? "";
-    if (s.includes(":")) return s;
-    if (s === "afternoon") return "13:00";
-    if (s === "evening")   return "17:00";
-    return "08:00";
-  });
-
-  function submitConfirm() {
-    onConfirm({ id: order.id, preferredDate: confirmDate, preferredTimeSlot: etaTime });
-    setShowPanel(false);
-  }
 
   return (
     <div
@@ -231,120 +214,13 @@ function OrderCard({ order, onConfirm, onAssign, onEdit, confirming }) {
         )}
       </div>
 
-      {/* Actions / truck pills */}
-      {order.status === "pending" && !showPanel && (
-        <button
-          onClick={() => setShowPanel(true)}
-          style={{
-            width: "100%",
-            height: 36,
-            borderRadius: 10,
-            border: "none",
-            background: "var(--st-confirmed-bg)",
-            color: "var(--st-confirmed)",
-            fontWeight: 700,
-            fontSize: 13,
-            cursor: "pointer",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: 6,
-          }}
-        >
-          <CheckCircle size={14} />
-          ยืนยันออเดอร์
-        </button>
-      )}
-
-      {order.status === "pending" && showPanel && (
-        <div
-          style={{
-            border: "1.5px solid var(--primary-100)",
-            borderRadius: 12,
-            background: "var(--primary-50)",
-            padding: "12px 14px",
-            display: "flex",
-            flexDirection: "column",
-            gap: 10,
-          }}
-        >
-          <div style={{ fontSize: 12, fontWeight: 700, color: "var(--primary)" }}>
-            กำหนดวันและเวลาถึงหน้างาน (ETA)
-          </div>
-
-          {/* Date + time row */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-            <div>
-              <div style={{ fontSize: 11, color: "var(--ink-3)", marginBottom: 4 }}>วันที่จัดส่ง</div>
-              <input
-                type="date"
-                className="field"
-                value={confirmDate}
-                min={todayStr}
-                onChange={(e) => setConfirmDate(e.target.value)}
-                style={{ background: "var(--surface)" }}
-              />
-            </div>
-            <div>
-              <div style={{ fontSize: 11, color: "var(--ink-3)", marginBottom: 4 }}>เวลาถึง (ETA)</div>
-              <input
-                type="time"
-                className="field"
-                value={etaTime}
-                step={1800}
-                onChange={(e) => setEtaTime(e.target.value)}
-                style={{ background: "var(--surface)", fontFamily: "var(--mono)", fontWeight: 700 }}
-              />
-            </div>
-          </div>
-
-          {/* Confirm + cancel */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1.6fr", gap: 8, marginTop: 2 }}>
-            <button
-              onClick={() => setShowPanel(false)}
-              style={{
-                height: 36,
-                borderRadius: 10,
-                border: "1px solid var(--border-2)",
-                background: "var(--surface)",
-                color: "var(--ink-3)",
-                fontWeight: 600,
-                fontSize: 12.5,
-                cursor: "pointer",
-              }}
-            >
-              ยกเลิก
-            </button>
-            <button
-              onClick={submitConfirm}
-              disabled={confirming || !confirmDate || !etaTime}
-              style={{
-                height: 36,
-                borderRadius: 10,
-                border: "none",
-                background: confirming || !confirmDate || !etaTime ? "var(--surface-3)" : "var(--primary)",
-                color: confirming || !confirmDate || !etaTime ? "var(--ink-4)" : "#fff",
-                fontWeight: 700,
-                fontSize: 12.5,
-                cursor: confirming || !confirmDate || !etaTime ? "not-allowed" : "pointer",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 6,
-              }}
-            >
-              {confirming ? <Loader2 size={13} className="spin" /> : <CheckCircle size={13} />}
-              ยืนยัน & แจ้งลูกค้า
-            </button>
-          </div>
-        </div>
-      )}
-      {order.status === "confirmed" && (
+      {/* Actions — schedule trucks (then confirm to customer) */}
+      {(order.status === "pending" || order.status === "confirmed") && (
         <button
           onClick={() => onAssign(order)}
           style={{
             width: "100%",
-            height: 36,
+            height: 38,
             borderRadius: 10,
             border: "none",
             background: "var(--primary)",
@@ -358,7 +234,7 @@ function OrderCard({ order, onConfirm, onAssign, onEdit, confirming }) {
             gap: 6,
           }}
         >
-          <Truck size={14} /> จัดคิวรถโม่{" "}
+          <Truck size={14} /> จัดคิวรถ & ยืนยันลูกค้า{" "}
           <ChevronRight size={14} style={{ marginLeft: "auto" }} />
         </button>
       )}
@@ -477,6 +353,103 @@ const EMPTY_ROW = () => ({
   endTime: "10:00",
 });
 
+/* Map the customer's requested ETA → a valid 30-min start slot */
+function requestedStartSlot(order) {
+  const s = order.preferredTimeSlot ?? "";
+  let hhmm = "08:00";
+  if (s.includes(":")) hhmm = s.slice(0, 5);
+  else if (s === "afternoon") hhmm = "13:00";
+  else if (s === "evening") hhmm = "17:00";
+  if (SCHED_SLOTS.includes(hhmm)) return hhmm;
+  const earlier = SCHED_SLOTS.filter((t) => t <= hhmm);
+  return earlier.length ? earlier[earlier.length - 1] : SCHED_SLOTS[0];
+}
+
+/* Shift an HH:MM slot by ±hours, clamped to plant hours [07:00, 19:00] */
+function shiftSlot(hhmm, deltaHours) {
+  const [h, m] = hhmm.split(":").map(Number);
+  const total = Math.max(7 * 60, Math.min(19 * 60, h * 60 + m + deltaHours * 60));
+  return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
+}
+
+/* Scheduling cycle parameters (hours):
+   - LEAD: booking starts this long before site arrival, sparing time for
+     concrete loading + outbound travel (so an 08:00 ETA → 07:00 booking)
+   - TRIP: total truck occupancy per run (load → deliver → unload → return)
+   - STAGGER: each subsequent truck's site arrival is offset by this much, so
+     trucks don't all reach the site at once (truck 2 arrives 1 hr after truck 1) */
+const LEAD_HOURS = 1;
+const TRIP_HOURS = 2;
+const STAGGER_HOURS = 1;
+
+/* Booking window for the i-th truck (0-indexed) given the customer's site ETA */
+function bookingWindow(siteEta, i) {
+  const start = shiftSlot(siteEta, i * STAGGER_HOURS - LEAD_HOURS);
+  const end = shiftSlot(start, TRIP_HOURS);
+  return { start, end };
+}
+
+/* Rule-based fleet scheduler — picks the best free truck(s) for an order.
+   Deterministic, runs in-browser. Returns { rows, reason }.
+   - booking window leads the customer's site ETA by LEAD_HOURS
+   - single free truck whose capacity fits the whole order (smallest first)
+   - otherwise splits across the largest free trucks, staggering each truck's
+     site arrival by STAGGER_HOURS (so its booking window shifts +1 hr too)
+   - skips trucks with a conflicting schedule at that truck's window
+   - in edit mode, ignores the order's own existing rows */
+function suggestAssignment({ trucks, schedules, totalQty, schedDate, siteEta, orderId, isEdit }) {
+  const isFreeAt = (truckId, start, end) =>
+    !schedules.some((s) => {
+      if (s.truckId !== truckId) return false;
+      if (s.scheduledDate !== schedDate) return false;
+      if (!["scheduled", "in_transit"].includes(s.status)) return false;
+      if (isEdit && s.orderId === orderId) return false;
+      const sS = (s.scheduledStartTime ?? "").slice(0, 5);
+      const sE = (s.scheduledEndTime ?? "").slice(0, 5);
+      return sS < end && sE > start;
+    });
+
+  // 1 — single truck that fits the whole order (smallest capacity first)
+  const w0 = bookingWindow(siteEta, 0);
+  const single = trucks
+    .filter((t) => t.isActive !== false && Number(t.capacity) >= totalQty && isFreeAt(t.id, w0.start, w0.end))
+    .sort((a, b) => Number(a.capacity) - Number(b.capacity))[0];
+  if (single) {
+    return {
+      rows: [{ truckId: single.id, quantityM3: String(totalQty), startTime: w0.start, endTime: w0.end }],
+      reason: `แนะนำ ${single.registration} (${single.truckType} ${single.capacity} คิว) — ลูกค้าขอถึงหน้างาน ${siteEta} น. จองรถ ${w0.start}–${w0.end} น. (เผื่อโหลด+เดินทาง 1 ชม.)`,
+    };
+  }
+
+  // 2 — split across trucks, staggering each truck's arrival by STAGGER_HOURS
+  let remaining = totalQty;
+  const rows = [];
+  const used = new Set();
+  let i = 0;
+  while (remaining > 0.001) {
+    const w = bookingWindow(siteEta, i);
+    const cand = trucks
+      .filter((t) => t.isActive !== false && !used.has(t.id) && isFreeAt(t.id, w.start, w.end))
+      .sort((a, b) => Number(b.capacity) - Number(a.capacity))[0];
+    if (!cand) break;
+    const take = Math.round(Math.min(Number(cand.capacity), remaining) * 2) / 2;
+    rows.push({ truckId: cand.id, quantityM3: String(take), startTime: w.start, endTime: w.end });
+    used.add(cand.id);
+    remaining = +(remaining - take).toFixed(2);
+    i++;
+  }
+
+  if (rows.length === 0)
+    return { rows: [], reason: `ไม่มีรถว่างช่วงที่ลูกค้าต้องการ (ถึงหน้างาน ${siteEta} น.) — ลองปรับเวลา` };
+  if (remaining > 0.001)
+    return { rows, reason: `รถว่างไม่พอ ขาดอีก ${remaining.toFixed(1)} คิว — เพิ่มรถหรือปรับเวลา` };
+  const lastArrival = shiftSlot(siteEta, (rows.length - 1) * STAGGER_HOURS);
+  return {
+    rows,
+    reason: `แนะนำแบ่ง ${rows.length} คัน — คันแรกถึงหน้างาน ${siteEta} น. คันสุดท้าย ${lastArrival} น. (ห่างกัน ${STAGGER_HOURS} ชม. · จองรถเผื่อโหลด+เดินทาง 1 ชม.)`,
+  };
+}
+
 function AssignDrawer({
   order,
   trucks,
@@ -500,8 +473,24 @@ function AssignDrawer({
       : (order.preferredDate ?? "")
   );
   const [notes, setNotes] = useState("");
+  const [suggestReason, setSuggestReason] = useState(null);
 
   const totalQty = fmtQty(order);
+
+  function runSuggest() {
+    if (!schedDate) return;
+    const { rows: suggested, reason } = suggestAssignment({
+      trucks,
+      schedules,
+      totalQty,
+      schedDate,
+      siteEta: requestedStartSlot(order),
+      orderId: order.id,
+      isEdit,
+    });
+    if (suggested.length) setRows(suggested);
+    setSuggestReason(reason);
+  }
   const photos = Array.isArray(order.sitePhotoUrls) ? order.sitePhotoUrls : [];
   const allocatedQty = rows.reduce(
     (s, r) => s + (parseFloat(r.quantityM3) || 0),
@@ -823,6 +812,57 @@ function AssignDrawer({
                     : `(เหลือ ${remaining})`}
               </div>
             </div>
+
+            {/* AI smart-suggest — pre-fills truck rows from fleet availability */}
+            <button
+              onClick={runSuggest}
+              disabled={!schedDate || trucks.length === 0}
+              style={{
+                width: "100%",
+                height: 40,
+                borderRadius: 10,
+                border: "1.5px solid var(--primary)",
+                background: "var(--primary-50)",
+                color: "var(--primary)",
+                fontWeight: 700,
+                fontSize: 13,
+                cursor: !schedDate || trucks.length === 0 ? "not-allowed" : "pointer",
+                opacity: !schedDate || trucks.length === 0 ? 0.5 : 1,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 7,
+                marginBottom: 10,
+              }}
+            >
+              <Sparkles size={15} /> แนะนำการจัดรถอัตโนมัติ (AI)
+            </button>
+
+            {suggestReason && (
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "flex-start",
+                  gap: 7,
+                  padding: "9px 12px",
+                  borderRadius: 10,
+                  background: "var(--primary-50)",
+                  color: "var(--primary-700)",
+                  fontSize: 12,
+                  fontWeight: 600,
+                  lineHeight: 1.4,
+                  marginBottom: 12,
+                }}
+              >
+                <Sparkles size={13} style={{ flexShrink: 0, marginTop: 1 }} />
+                <span>
+                  {suggestReason}
+                  <span style={{ display: "block", fontWeight: 400, color: "var(--ink-3)", marginTop: 2 }}>
+                    ตรวจสอบและปรับแก้ได้ก่อนกดยืนยัน
+                  </span>
+                </span>
+              </div>
+            )}
 
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               {rows.map((row, i) => {
@@ -1184,11 +1224,6 @@ export default function DispatcherDashboard() {
   const { data: rawOrders = [], isLoading } = useAllOrders();
   const { data: trucks = [] } = useTrucks();
   const { data: schedules = [] } = useSchedules();
-  const {
-    mutate: confirmOrder,
-    isPending: confirming,
-    variables: confirmingId,
-  } = useConfirmOrder();
   const { mutate: createSchedule, isPending: submittingCreate } = useCreateSchedule();
   const { mutate: replaceSchedule, isPending: submittingReplace } = useReplaceSchedule();
   const { mutate: seedTrucks, isPending: seeding } = useSeedTrucks();
@@ -1207,8 +1242,12 @@ export default function DispatcherDashboard() {
     0,
   );
 
-  const pending = rawOrders.filter((o) => o.status === "pending");
-  const confirmed = rawOrders.filter((o) => o.status === "confirmed");
+  // Orders awaiting truck allocation — both brand-new (pending) and any
+  // re-opened (confirmed). Scheduling happens before the customer is confirmed.
+  const needsSchedule = rawOrders.filter((o) =>
+    ["pending", "confirmed"].includes(o.status),
+  );
+  const scheduled = rawOrders.filter((o) => o.status === "scheduled");
   const inTransit = rawOrders.filter((o) => o.status === "in_transit");
   const active = rawOrders.filter((o) =>
     ["scheduled", "in_transit"].includes(o.status),
@@ -1269,14 +1308,14 @@ export default function DispatcherDashboard() {
           }}
         >
           <StatTile
-            label="รอยืนยัน"
-            value={pending.length}
+            label="รอจัดคิวรถ"
+            value={needsSchedule.length}
             color="var(--st-pending)"
           />
           <StatTile
-            label="รอจัดคิวรถ"
-            value={confirmed.length}
-            color="var(--st-confirmed)"
+            label="จัดคิวแล้ว"
+            value={scheduled.length}
+            color="var(--st-scheduled)"
           />
           <StatTile
             label="กำลังจัดส่ง"
@@ -1307,35 +1346,17 @@ export default function DispatcherDashboard() {
           <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
             <section>
               <SectionHead
-                label="ออเดอร์ใหม่ รอยืนยัน"
-                count={pending.length}
+                label="รอจัดคิวรถโม่"
+                count={needsSchedule.length}
                 color="var(--st-pending)"
               />
-              {pending.length === 0 ? (
-                <EmptySection text="ไม่มีออเดอร์รอยืนยัน" />
-              ) : (
-                pending.map((o) => (
-                  <div key={o.id} style={{ marginBottom: 10 }}>
-                    <OrderCard
-                      order={o}
-                      onConfirm={(data) => confirmOrder(data)}
-                      confirming={confirming && confirmingId?.id === o.id}
-                    />
-                  </div>
-                ))
-              )}
-            </section>
-
-            <section>
-              <SectionHead
-                label="รอจัดคิวรถโม่"
-                count={confirmed.length}
-                color="var(--st-confirmed)"
-              />
-              {confirmed.length === 0 ? (
+              <div style={{ fontSize: 12, color: "var(--ink-3)", marginTop: -4, marginBottom: 12 }}>
+                จัดสรรรถโม่ให้ตรงกับคำสั่งซื้อก่อน แล้วระบบจะยืนยัน ETA · ปริมาณ · สเปกให้ลูกค้าทาง LINE
+              </div>
+              {needsSchedule.length === 0 ? (
                 <EmptySection text="ไม่มีออเดอร์รอจัดคิว" />
               ) : (
-                confirmed.map((o) => (
+                needsSchedule.map((o) => (
                   <div key={o.id} style={{ marginBottom: 10 }}>
                     <OrderCard order={o} onAssign={openAssign} />
                   </div>
