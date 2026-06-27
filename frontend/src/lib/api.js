@@ -6,6 +6,11 @@ export const syncUser = async (userData) => {
   return data;
 };
 
+export const getMe = async () => {
+  const { data } = await api.get("/users/me");
+  return data;
+};
+
 // Products API
 export const getAllProducts = async () => {
   const { data } = await api.get("/products");
@@ -105,6 +110,11 @@ export const replaceSchedule = async (scheduleData) => {
 
 export const updateScheduleStatus = async ({ id, status }) => {
   const { data } = await api.patch(`/schedule/${id}/status`, { status });
+  return data;
+};
+
+export const updateScheduleTimes = async ({ id, scheduledStartTime, scheduledEndTime, scheduledDate }) => {
+  const { data } = await api.patch(`/schedule/${id}`, { scheduledStartTime, scheduledEndTime, scheduledDate });
   return data;
 };
 

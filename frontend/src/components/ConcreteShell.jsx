@@ -1,6 +1,6 @@
 import { Link, useLocation, useNavigate } from "react-router";
 import { useUser } from "@clerk/clerk-react";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import {
   Layers, ShoppingCart, Package, BellIcon, CalendarDays,
   Truck, User, Menu, X, ClipboardList,
@@ -15,9 +15,6 @@ const CUSTOMER_NAV = [
 
 const DISPATCHER_NAV = [
   { path: "/dispatch",  label: "จัดการออเดอร์",  Icon: ClipboardList },
-];
-
-const TRUCK_NAV = [
   { path: "/trucks",    label: "มุมมองรถโม่",     Icon: Truck },
 ];
 
@@ -27,22 +24,17 @@ const PAGE_TITLES = {
   "/dispatch":  "จัดการออเดอร์",
 };
 
-const ROLE_DEFAULT = {
-  customer:   "/my-orders",
-  dispatcher: "/dispatch",
-  driver:     "/trucks",
-  admin:      "/admin",
-};
-
+// Demo personas: `role` is the DB role applied; `to` is where the tab lands.
+// The truck board is a dispatcher tool, so its tab acts as dispatcher.
 const ROLES = [
-  { key: "dispatcher", label: "ฝ่ายจัดส่ง",  Icon: Layers },
-  { key: "customer",   label: "ลูกค้า",       Icon: User  },
-  { key: "driver",     label: "มุมมองรถโม่",  Icon: Truck },
+  { key: "dispatcher", role: "dispatcher", label: "ฝ่ายจัดส่ง",  Icon: Layers, to: "/dispatch"  },
+  { key: "customer",   role: "customer",   label: "ลูกค้า",       Icon: User,   to: "/my-orders" },
+  { key: "trucks",     role: "dispatcher", label: "มุมมองรถโม่",  Icon: Truck,  to: "/trucks"    },
 ];
 
 function currentView(pathname) {
+  if (pathname.startsWith("/trucks")) return "trucks";
   if (pathname.startsWith("/dispatch") || pathname.startsWith("/schedule") || pathname.startsWith("/monitor")) return "dispatcher";
-  if (pathname.startsWith("/trucks")) return "driver";
   if (pathname.startsWith("/admin"))  return "admin";
   return "customer";
 }
@@ -61,7 +53,7 @@ function AvatarCircle({ name, size = 34, bg = "#1F52C9" }) {
   );
 }
 
-const ROLE_LABELS = { customer: "ลูกค้า", dispatcher: "ฝ่ายจัดส่ง", driver: "มุมมองรถโม่", admin: "ผู้ดูแลระบบ" };
+const ROLE_LABELS = { customer: "ลูกค้า", dispatcher: "ฝ่ายจัดส่ง", trucks: "ฝ่ายจัดส่ง", driver: "มุมมองรถโม่", admin: "ผู้ดูแลระบบ" };
 
 export default function ConcreteShell({ children, contentRef }) {
   const location  = useLocation();
@@ -73,19 +65,16 @@ export default function ConcreteShell({ children, contentRef }) {
   const [switchingTo, setSwitchingTo] = useState(null);
   const { mutate: switchRole } = useSwitchRole();
 
-  useEffect(() => { setSidebarOpen(false); }, [location.pathname]);
+  const navItems = (view === "dispatcher" || view === "trucks") ? DISPATCHER_NAV : CUSTOMER_NAV;
 
-  const navItems = view === "dispatcher" ? DISPATCHER_NAV
-                 : view === "driver"     ? TRUCK_NAV
-                 : CUSTOMER_NAV;
-
-  function handleRoleSwitch(roleKey) {
+  function handleRoleSwitch(entry) {
     if (switchingTo) return;
-    setSwitchingTo(roleKey);
-    switchRole(roleKey, {
+    setSwitchingTo(entry.key);
+    switchRole(entry.role, {
       onSuccess: () => {
         setSwitchingTo(null);
-        navigate(ROLE_DEFAULT[roleKey]);
+        setSidebarOpen(false);
+        navigate(entry.to);
       },
       onError: () => setSwitchingTo(null),
     });
@@ -110,33 +99,38 @@ export default function ConcreteShell({ children, contentRef }) {
         </div>
 
         <div className="nav-group-label">
-          {view === "dispatcher" ? "ฝ่ายจัดส่ง · Dispatcher" : "ลูกค้า · Customer"}
+          {(view === "dispatcher" || view === "trucks") ? "ฝ่ายจัดส่ง · Dispatcher" : "ลูกค้า · Customer"}
         </div>
         <nav className="nav">
-          {navItems.map(({ path, label, Icon }) => (
-            <Link
-              key={path}
-              to={path}
-              className={`nav-item${location.pathname === path ? " active" : ""}`}
-            >
-              <Icon size={18} />
-              <span>{label}</span>
-            </Link>
-          ))}
+          {navItems.map((item) => {
+            const { path, label, Icon } = item;
+            return (
+              <Link
+                key={path}
+                to={path}
+                onClick={() => setSidebarOpen(false)}
+                className={`nav-item${location.pathname === path ? " active" : ""}`}
+              >
+                <Icon size={18} />
+                <span>{label}</span>
+              </Link>
+            );
+          })}
         </nav>
 
         {/* Demo role switcher */}
         <div className="nav-group-label" style={{ marginTop: 8 }}>มุมมองสาธิต</div>
         <nav className="nav" style={{ gap: 2 }}>
-          {ROLES.map(({ key, label, Icon }) => {
-            const isActive = view === key || (view === "customer" && key === "customer");
+          {ROLES.map((entry) => {
+            const { key, label, Icon } = entry;
+            const isActive = view === key;
             const isLoading = switchingTo === key;
             return (
               <button
                 key={key}
                 className={`nav-item${isActive ? " active" : ""}`}
                 style={{ cursor: isLoading ? "wait" : "pointer", opacity: isLoading ? 0.7 : 1 }}
-                onClick={() => !isActive && handleRoleSwitch(key)}
+                onClick={() => !isActive && handleRoleSwitch(entry)}
                 disabled={isActive || !!switchingTo}
               >
                 <Icon size={18} />

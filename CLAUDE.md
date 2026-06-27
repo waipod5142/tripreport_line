@@ -7,18 +7,18 @@
 | Database schema (all 5 ConcreteFlow tables + role/phone on users) | ✅ Done — `db:push` applied |
 | Middleware: `requireAuth` + `requireRole` | ✅ Done |
 | Concrete Products CRUD + seed (7 ksc grades in DB) | ✅ Done |
-| Orders backend: `POST /api/orders`, `GET /api/orders/my` (with joins), `GET /api/orders`, `PATCH /api/orders/:id/status` (also updates `preferredDate` + `preferredTimeSlot` when confirming) | ✅ Done |
+| Orders backend: `POST /api/orders`, `GET /api/orders/my` (with joins), `GET /api/orders`, `PATCH /api/orders/:id/status` (also updates `preferredDate` + `preferredTimeSlot` when confirming), `DELETE /api/orders/:id` (customer cancel — allowed for `pending`/`confirmed`/`scheduled`; deletes schedule rows first; blocked once any truck is `in_transit`/`completed`; fires LINE cancellation notice) | ✅ Done |
 | User routes: `POST /sync`, `GET /me`, `PATCH /me`, `GET /` (admin), `PATCH /:id/role` (admin) | ✅ Done |
 | Cloudinary photo upload — backend uploads base64 → Cloudinary; stores `secure_url` in DB | ✅ Done |
 | `OrderPage` wired to real API (`useConcreteProducts` + `useCreateOrder`) | ✅ Done |
 | `MyOrdersPage` wired to real API (`useMyOrders` + `toUiOrder` normaliser) | ✅ Done |
-| Schedule routes/controller (`scheduleRoutes.ts` + `scheduleController.ts`) | ✅ Done — GET, POST, PUT (replace-all), PATCH/:id/status, DELETE; qty + conflict validation |
+| Schedule routes/controller (`scheduleRoutes.ts` + `scheduleController.ts`) | ✅ Done — GET, POST, PUT (replace-all), PATCH/:id/status, **PATCH/:id (move/resize times — drag-to-reschedule; dispatcher-only; `scheduled` rows only; conflict-checked)**, DELETE; qty + conflict validation |
 | Truck routes/controller (`truckRoutes.ts` + `truckController.ts`) | ✅ Done — GET, POST/seed (5 trucks seeded), POST, PATCH |
 | `DispatcherDashboard` + inline `AssignDrawer` | ✅ Done — **schedule-then-confirm flow**: single "รอจัดคิวรถโม่" queue (pending+confirmed); assign drawer with **AI rule-based scheduler** (lead-time + stagger), multi-truck assign, qty/conflict guards, edit mode (PUT), fleet panel |
-| `TruckView` — 24-hour side-by-side Gantt (today + tomorrow) | ✅ Done — 64px/hr, sticky labels, auto-scroll to now, block click → status actions |
-| `useDispatcher.js` + `api.js` dispatcher functions | ✅ Done — all hooks + API helpers wired |
-| `MyOrdersPage` multi-truck support + null guards | ✅ Done — `schedules[]` array, `mapSched` helper, null-safe orderNumber; pipeline tracker order (รับคำสั่งซื้อ → จัดคิวรถโม่ → ยืนยันออเดอร์ → กำลังจัดส่ง → ส่งสำเร็จ); delete button on pending order cards (2-step confirm) |
-| LINE service (`lineNotify.ts`) | ⬜ Pending |
+| `TruckView` — 24-hour side-by-side Gantt (today + tomorrow) | ✅ Done — 64px/hr, sticky labels, auto-scroll to now, block click → status actions, **drag-to-reschedule** (drag body to move / drag edges to resize `scheduled` blocks; 30-min snap; live conflict preview + snap-back on overlap → `PATCH /api/schedule/:id`) |
+| `useDispatcher.js` + `api.js` dispatcher functions | ✅ Done — all hooks + API helpers wired (incl. `useUpdateScheduleTimes`); `useMe` (`hooks/useMe.js`) exposes the signed-in user's DB role |
+| `MyOrdersPage` multi-truck support + null guards | ✅ Done — `schedules[]` array, `mapSched` helper, null-safe orderNumber; pipeline tracker order (รับคำสั่งซื้อ → จัดคิวรถโม่ → ยืนยันออเดอร์ → กำลังจัดส่ง → ส่งสำเร็จ); delete button on `pending`/`confirmed`/`scheduled` order cards (2-step confirm; shows "ยกเลิกคิวรถทั้งหมด" warning when trucks already booked) |
+| LINE service (`lineNotify.ts`) | ◑ Partial — push helper landed (`pushMessage` · `notifyOrderCancelled` · `isLineConfigured`); safe no-op + log when `LINE_CHANNEL_ACCESS_TOKEN` unset or customer has no `lineUserId`; **wired to order cancellation only** so far. Other lifecycle triggers + account-linking (populate `users.lineUserId`) still pending |
 | Live Monitor (`LiveMonitor.jsx`) | ⬜ Pending |
 | Schedule Board Page (`ScheduleBoardPage.jsx`) — classic truck-column Gantt | ⬜ Pending |
 | Driver UI (`DriverDashboard.jsx`) | ⬜ Pending |
@@ -95,6 +95,7 @@ Extend the existing `users`, `products`, `comments` tables with the following:
 ```ts
 role: text("role").notNull().default("customer"), // customer | dispatcher | driver | admin
 phone: text("phone"),
+lineUserId: text("line_user_id"), // LINE Messaging API push target (nullable until linked)
 ```
 
 ### `concrete_products`
@@ -243,7 +244,7 @@ GET    /api/orders                        [dispatcher|admin] All orders (filtera
 GET    /api/orders/my                     [customer] Current user's orders
 GET    /api/orders/:id                    Owner or dispatcher — order detail with items + schedule
 PATCH  /api/orders/:id/status             [dispatcher|admin] Update order status → triggers LINE notification; also accepts optional `preferredDate` + `preferredTimeSlot` (dispatcher sets ETA when confirming)
-DELETE /api/orders/:id                    [customer] Cancel pending order
+DELETE /api/orders/:id                    [customer] Cancel order (pending/confirmed/scheduled) → deletes its delivery_schedules rows first, then the order; rejected once any truck is in_transit/completed; fires LINE cancellation notice
 ```
 
 ### Delivery Schedule — `scheduleRoutes.ts`
@@ -252,6 +253,7 @@ GET    /api/schedule                      [dispatcher|admin] Full schedule (with
 POST   /api/schedule                      [dispatcher] Assign order → assignments[] (multi-truck); qty + conflict validated
 PUT    /api/schedule                      [dispatcher] Replace all schedule rows for an order (edit mode); blocks if any row in_transit
 PATCH  /api/schedule/:id/status           [driver|dispatcher] Update single delivery status (in_transit → completed)
+PATCH  /api/schedule/:id                   [dispatcher] Move/resize a single row's time window (drag-to-reschedule); only `scheduled` rows; conflict-checked vs the truck's other rows. Body: { scheduledStartTime, scheduledEndTime, scheduledDate? }
 DELETE /api/schedule/:id                  [dispatcher] Delete a single schedule row
 ```
 
@@ -279,15 +281,18 @@ PATCH  /api/trucks/:id                    [admin] Update truck
 
 LINE is the **primary customer communication channel**. All status transitions fire an automated OA message. The customer's LINE thread mirrors the order lifecycle.
 
+> **Status (◑ partial):** `lineNotify.ts` push helper exists and is wired to **order cancellation** (`notifyOrderCancelled`). It's a safe no-op (logs the intended payload) when `LINE_CHANNEL_ACCESS_TOKEN` is unset or the customer has no `users.lineUserId`. The remaining lifecycle triggers below, and the account-linking webhook that populates `lineUserId`, are still pending.
+
 ### Automated message triggers
 
-| Trigger | Message type | Content |
-|---|---|---|
-| Order placed | Text + Order summary card | รับคำสั่งซื้อ + สรุปออเดอร์ (grade, คิว, หน้างาน, รอบส่ง, ยอดรวม) |
-| Status → confirmed | Text | ยืนยันออเดอร์แล้ว กำลังจัดคิวรถโม่ |
-| Status → scheduled | Text + **Dispatch confirmation card** | ยืนยันการจัดรถ: ทะเบียนรถ, คนขับ, เบอร์โทร, ช่วงเวลาจัดส่ง |
-| Status → in_transit | Text + **Live tracking card** | รถออกจากโรงงาน + mini-map with ETA progress |
-| Status → delivered | Live card (updated) + Text + Rating quick-reply | ส่งสำเร็จ + prompt ให้คะแนน |
+| Trigger | Message type | Content | Status |
+|---|---|---|---|
+| Order placed | Text + Order summary card | รับคำสั่งซื้อ + สรุปออเดอร์ (grade, คิว, หน้างาน, รอบส่ง, ยอดรวม) | ⬜ |
+| Status → confirmed | Text | ยืนยันออเดอร์แล้ว กำลังจัดคิวรถโม่ | ⬜ |
+| Status → scheduled | Text + **Dispatch confirmation card** | ยืนยันการจัดรถ: ทะเบียนรถ, คนขับ, เบอร์โทร, ช่วงเวลาจัดส่ง | ⬜ |
+| Status → in_transit | Text + **Live tracking card** | รถออกจากโรงงาน + mini-map with ETA progress | ⬜ |
+| Status → delivered | Live card (updated) + Text + Rating quick-reply | ส่งสำเร็จ + prompt ให้คะแนน | ⬜ |
+| Order cancelled | Text | ยกเลิกคำสั่งซื้อ #XXXX (+ สินค้า/ปริมาณ/หน้างาน) | ✅ |
 
 ### LINE card designs
 - **Order card**: Blue gradient header (`#3D7BF7 → #1F52C9`), order summary KV rows
@@ -518,20 +523,20 @@ backend/src/
 │   ├── productRoutes.ts         (legacy Productify)
 │   ├── commentRoutes.ts         (legacy Productify)
 │   ├── concreteProductRoutes.ts GET (public) + POST/PATCH/DELETE (admin) + /seed  ✅
-│   ├── orderRoutes.ts           POST + GET /my + GET / + PATCH /:id/status  ✅
-│   ├── scheduleRoutes.ts        GET · POST · PUT · PATCH/:id/status · DELETE  ✅
+│   ├── orderRoutes.ts           POST + GET /my + GET / + PATCH /:id/status + DELETE /:id  ✅
+│   ├── scheduleRoutes.ts        GET · POST · PUT · PATCH/:id/status · PATCH/:id (times) · DELETE  ✅
 │   └── truckRoutes.ts           GET · POST/seed · POST · PATCH/:id  ✅
 ├── controllers/
 │   ├── userController.ts        syncUser · getMe · updateMe · getAllUsers · updateUserRole  ✅
 │   ├── productController.ts     (legacy Productify)
 │   ├── commentController.ts     (legacy Productify)
 │   ├── concreteProductController.ts  ✅
-│   ├── orderController.ts       createOrder (uploads photos → Cloudinary) · getMyOrders (with joins) · getAllOrders · updateOrderStatus  ✅
-│   ├── scheduleController.ts    getSchedule · createSchedule (qty+conflict check) · replaceSchedule (PUT, edit mode) · updateScheduleStatus · deleteSchedule  ✅
+│   ├── orderController.ts       createOrder (uploads photos → Cloudinary) · getMyOrders (with joins) · getAllOrders · updateOrderStatus · deleteOrder (cancel → deletes schedule rows + fires LINE notice)  ✅
+│   ├── scheduleController.ts    getSchedule · createSchedule (qty+conflict check) · replaceSchedule (PUT, edit mode) · updateScheduleStatus · updateScheduleTimes (PATCH/:id, drag-to-reschedule) · deleteSchedule  ✅
 │   └── truckController.ts       getTrucks · seedTrucks (5 trucks) · createTruck · updateTruck  ✅
 ├── services/
 │   ├── cloudinaryUpload.ts      uploadImage · uploadImages — uploads base64 data URLs to Cloudinary, returns secure_url  ✅
-│   └── lineNotify.ts            LINE Messaging API push helper  ⬜ pending
+│   └── lineNotify.ts            LINE Messaging API push helper  ◑ partial — `pushMessage` · `notifyOrderCancelled` · `isLineConfigured`; no-op+log when token/lineUserId missing; wired to order cancellation
 └── index.ts                     Express app entry; body limit raised to 10 mb for photo payloads
 ```
 
@@ -550,11 +555,12 @@ frontend/src/
 │   ├── useProducts.js           (legacy Productify)
 │   ├── useComments.js           (legacy Productify)
 │   ├── useConcreteProducts.js   TanStack Query — GET /api/concrete-products  ✅
+│   ├── useMe.js                 TanStack Query — GET /api/users/me (signed-in user + DB role)  ✅
 │   ├── useOrders.js             useMyOrders + useCreateOrder + useDeleteOrder  ✅
-│   └── useDispatcher.js         useAllOrders · useConfirmOrder · useTrucks · useSeedTrucks · useDrivers · useSchedules · useCreateSchedule · useReplaceSchedule · useUpdateScheduleStatus · useSwitchRole  ✅
+│   └── useDispatcher.js         useAllOrders · useConfirmOrder · useTrucks · useSeedTrucks · useDrivers · useSchedules · useCreateSchedule · useReplaceSchedule · useUpdateScheduleStatus · useUpdateScheduleTimes · useSwitchRole  ✅
 ├── components/
 │   ├── Navbar.jsx               Updated for ConcreteFlow nav
-│   ├── ConcreteShell.jsx        Full-screen sidebar shell for ConcreteFlow pages  ✅
+│   ├── ConcreteShell.jsx        Full-screen sidebar shell for ConcreteFlow pages; demo role switcher (the "มุมมองรถโม่" tab acts as **dispatcher** + lands on /trucks; /trucks is part of the dispatcher nav)  ✅
 │   ├── LoadingSpinner.jsx
 │   ├── OrderStatusBadge.jsx     ⬜ pending (inline styled in pages for now)
 │   ├── ConcreteProductCard.jsx  ⬜ pending (product selection inline in OrderPage for now)
@@ -575,9 +581,9 @@ frontend/src/
 │   ├── EditProductPage.jsx      Legacy Productify edit product
 │   ├── ProfilePage.jsx          Legacy Productify profile
 │   ├── OrderPage.jsx            [customer] 3-step order form — wired to real API  ✅
-│   ├── MyOrdersPage.jsx         [customer] Order list; multi-truck schedules[], toUiOrder normaliser, null guards  ✅
+│   ├── MyOrdersPage.jsx         [customer] Order list; multi-truck schedules[], toUiOrder normaliser, null guards; delete on pending/confirmed/scheduled cards  ✅
 │   ├── DispatcherDashboard.jsx  [dispatcher] Stats · order queues · inline AssignDrawer · multi-truck assign · edit mode (PUT) · fleet panel  ✅
-│   ├── TruckView.jsx            [dispatcher] 24-hr side-by-side Gantt (today + tomorrow); sticky labels; auto-scroll to now  ✅  (route: /trucks)
+│   ├── TruckView.jsx            [dispatcher] 24-hr side-by-side Gantt (today + tomorrow); sticky labels; auto-scroll to now; drag-to-reschedule (move/resize, role-gated via useMe — read-only for non-dispatchers)  ✅  (route: /trucks)
 │   ├── ScheduleBoardPage.jsx    ⬜ pending — classic truck-column Gantt (columns=trucks, rows=timeslots)
 │   ├── LiveMonitor.jsx          ⬜ pending
 │   ├── DriverDashboard.jsx      ⬜ pending
@@ -707,6 +713,8 @@ npm run start          # runs DB push then starts Express (serves frontend/dist)
 - **Multi-truck split delivery**: A single order can be assigned to multiple trucks by submitting `assignments[]` with more than one entry. `delivery_schedules` has no UNIQUE constraint on `orderId`.
 - **Qty over-allocation guard**: Total `quantityM3` across all `assignments[]` must not exceed the order's `order_items` total. Enforced server-side (0.001 float tolerance) and in the `AssignDrawer` UI (`remaining < 0` blocks submit).
 - **Edit mode (PUT)**: `replaceSchedule` atomically deletes all existing rows for the order and re-inserts the new `assignments[]`. Blocked if any existing row has `status = "in_transit"`.
+- **Drag-to-reschedule (PATCH /:id)**: `updateScheduleTimes` moves/resizes a **single** row's window. Dispatcher-only, `scheduled` rows only (refuses in_transit/completed/failed), conflict-checked against the truck's other rows (excluding itself). In `TruckView` the drag is gated client-side by `useMe` (`canEdit = role ∈ {dispatcher, admin}`) so non-dispatchers get a read-only board (no handles); the move snaps to 30-min steps and snaps back (refetch-on-settle) if the server rejects.
+- **Order cancellation deletes schedule rows first**: `delivery_schedules.orderId` has **no** `ON DELETE CASCADE` (multi-truck design), so `orderController.deleteOrder` explicitly deletes the order's schedule rows before the order. Allowed for `pending`/`confirmed`/`scheduled`; refused once any row is `in_transit`/`completed`. Fires `notifyOrderCancelled` (LINE) best-effort, non-blocking.
 - **Conflict check in edit mode**: Both server (`s.orderId === orderId` skip) and client (`isEdit && s.orderId === order.id` skip) exclude the order's own existing rows when checking for time overlaps.
 - **Capacity check**: Sum of `order_items.quantityM3` for all orders assigned to a truck on a given day must not exceed `trucks.capacity`. Fleet panel in `DispatcherDashboard` shows 3 states: ว่าง (green) / ติดคิวพรุ่งนี้ (amber) / ติดคิววันนี้ (sky).
 - **Schedule before confirm**: truck allocation drives the customer confirmation, not the reverse. A `pending` order is scheduled directly (`pending → scheduled`); the booked `scheduledStartTime`/`scheduledEndTime` *is* the ETA confirmed to the customer. `preferredTimeSlot` stays as the customer's **requested** site-arrival time (a hint for the scheduler), never overwritten by the dashboard.
@@ -730,12 +738,12 @@ npm run start          # runs DB push then starts Express (serves frontend/dist)
 5. ✅ **User routes** — `POST /sync`; `GET /me`; `PATCH /me` (phone + role); `GET /` (admin); `PATCH /:id/role` (admin); `GET /drivers` (dispatcher)
 6. ✅ **Cloudinary** — `backend/src/services/cloudinaryUpload.ts`; `createOrder` uploads base64 photos server-side before DB insert; `sitePhotoUrls` now stores `https://res.cloudinary.com/…` URLs
 7. ✅ **Truck routes** — `GET /api/trucks`; `POST /api/trucks/seed` (5 trucks); `POST` + `PATCH/:id` (admin); `truckController.ts`
-8. ✅ **Schedule routes** — `GET`, `POST` (multi-truck, qty+conflict check), `PUT` (replace-all edit mode, blocks in_transit), `PATCH/:id/status`, `DELETE/:id`; `scheduleController.ts`
+8. ✅ **Schedule routes** — `GET`, `POST` (multi-truck, qty+conflict check), `PUT` (replace-all edit mode, blocks in_transit), `PATCH/:id/status`, `PATCH/:id` (move/resize a single row's window — drag-to-reschedule; `scheduled` only; conflict-checked), `DELETE/:id`; `scheduleController.ts`
 9. ✅ **OrderPage** — 3-step form wired to real API; fetches grades from DB; submits to `POST /api/orders`; loading + error states
 10. ✅ **MyOrdersPage** — `useMyOrders` hook; `toUiOrder` + `mapSched` normaliser; all trucks in `schedules[]` array; null-safe `orderNumber`; loading + error + empty states
 11. ✅ **DispatcherDashboard** — stats bar; single "รอจัดคิวรถโม่" queue (schedule-then-confirm flow, `pending → scheduled` directly); inline `AssignDrawer` with AI rule-based scheduler (lead-time + stagger), multi-truck rows, qty allocation guard, conflict check; edit mode via PUT; fleet panel (3-state busy)
-12. ✅ **TruckView** — 24-hr side-by-side Gantt (today + tomorrow); 64px/hr; sticky truck labels; auto-scroll to current time; block click → status actions
-13. ⬜ **LINE service** — `lineNotify.ts` push helper wired to status changes
+12. ✅ **TruckView** — 24-hr side-by-side Gantt (today + tomorrow); 64px/hr; sticky truck labels; auto-scroll to current time; block click → status actions; **drag-to-reschedule** (drag body to move / drag edges to resize `scheduled` blocks; 30-min snap; live conflict preview + snap-back → `PATCH /api/schedule/:id`); role-gated via `useMe` (read-only for non-dispatchers)
+13. ◑ **LINE service** — `lineNotify.ts` push helper (`pushMessage` · `notifyOrderCancelled` · `isLineConfigured`); safe no-op+log when unconfigured; **wired to order cancellation**; remaining status-change triggers + LINE account-linking (populate `users.lineUserId`) pending
 14. ⬜ **Schedule Board Page** (`ScheduleBoardPage.jsx`) — classic truck-column Gantt (columns = trucks, rows = 07:00–19:00 timeslots)
 15. ⬜ **Live Monitor** — `LiveMonitor.jsx` with animated Bangkok map, delivery track cards, LINE chat mirror
 16. ⬜ **Driver UI** — `DriverDashboard.jsx` — trip cards, ออกรถ / ส่งสำเร็จ actions

@@ -8,6 +8,7 @@ export const users = pgTable("users", {
   imageUrl: text("image_url"),
   role: text("role").notNull().default("customer"), // customer | dispatcher | driver | admin
   phone: text("phone"),
+  lineUserId: text("line_user_id"), // LINE Messaging API push target (nullable until linked)
   createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { mode: "date" })
     .notNull()

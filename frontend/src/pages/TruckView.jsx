@@ -1,7 +1,9 @@
 import { useState, useRef, useEffect } from "react";
-import { Loader2, Package, CheckCircle, Navigation, X } from "lucide-react";
+import { Loader2, Package, CheckCircle, Navigation, X, AlertTriangle } from "lucide-react";
 import ConcreteShell from "../components/ConcreteShell";
-import { useTrucks, useSchedules, useUpdateScheduleStatus } from "../hooks/useDispatcher";
+import { useTrucks, useSchedules, useUpdateScheduleStatus, useUpdateScheduleTimes } from "../hooks/useDispatcher";
+import { useMe } from "../hooks/useMe";
+
 
 /* ── Layout constants ──────────────────────────────────────── */
 const HOUR_W    = 64;          // px per hour
@@ -11,13 +13,19 @@ const ROW_H     = 64;          // px per truck row
 
 const HOURS = Array.from({ length: 24 }, (_, i) => i); // 0..23
 
+const SNAP_MIN  = 30;          // drag snaps to 30-minute increments
+const DAY_MINS  = 24 * 60;     // 1440
+const PX_PER_MIN = HOUR_W / 60;
+
 /* ── Time helpers ──────────────────────────────────────────── */
 function toMins(t) {
   const [h, m] = (t ?? "00:00").slice(0, 5).split(":").map(Number);
   return (h || 0) * 60 + (m || 0);
 }
-const leftPx  = (t)    => toMins(t) * (HOUR_W / 60);
-const widthPx = (s, e) => Math.max(2, (toMins(e) - toMins(s)) * (HOUR_W / 60));
+const minToHHMM = (m) =>
+  `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+const leftPxMin  = (mins)   => mins * PX_PER_MIN;
+const widthPxMin = (s, e)   => Math.max(2, (e - s) * PX_PER_MIN);
 
 function isoOffset(offsetDays) {
   const d = new Date();
@@ -94,8 +102,8 @@ function BlockCard({ sched, truckColor, onStatus, updating, onClose }) {
 }
 
 /* ── Single day track (inside a truck row) ─────────────────── */
-function DayTrack({ schedules, truckColor, isToday, selectedId, onSelect }) {
-  const np = isToday ? nowMinutes() * (HOUR_W / 60) : null;
+function DayTrack({ schedules, truckColor, isToday, selectedId, onSelect, draft, onBeginDrag, canEdit }) {
+  const np = isToday ? nowMinutes() * PX_PER_MIN : null;
   return (
     <div style={{ width: DAY_PX, flexShrink: 0, position: "relative", height: ROW_H, background: "var(--surface-3)" }}>
       {/* Hour grid lines */}
@@ -134,37 +142,63 @@ function DayTrack({ schedules, truckColor, isToday, selectedId, onSelect }) {
 
       {/* Schedule blocks */}
       {schedules.map((sched) => {
-        const lx = leftPx(sched.scheduledStartTime);
-        const wx = widthPx(sched.scheduledStartTime, sched.scheduledEndTime);
+        const isDragging = draft?.id === sched.id;
+        const startMin   = isDragging ? draft.start : toMins(sched.scheduledStartTime);
+        const endMin     = isDragging ? draft.end   : toMins(sched.scheduledEndTime);
+        const lx = leftPxMin(startMin);
+        const wx = widthPxMin(startMin, endMin);
         const isSelected = selectedId === sched.id;
         const isDone     = sched.status === "completed";
         const isTransit  = sched.status === "in_transit";
-        const color      = truckColor ?? "#2B6CF0";
+        const movable    = canEdit && sched.status === "scheduled";
+        const conflict   = isDragging && draft.conflict;
+        const color      = conflict ? "var(--danger)" : (truckColor ?? "#2B6CF0");
 
         return (
           <div
             key={sched.id}
+            onMouseDown={movable ? (e) => onBeginDrag(e, sched, "move") : undefined}
             onClick={() => onSelect(sched)}
-            title={`#${sched.order?.orderNumber?.slice(-4)} · ${Number(sched.quantityM3||0)}คิว · ${(sched.scheduledStartTime??"").slice(0,5)}–${(sched.scheduledEndTime??"").slice(0,5)}`}
+            title={`#${sched.order?.orderNumber?.slice(-4)} · ${Number(sched.quantityM3||0)}คิว · ${minToHHMM(startMin)}–${minToHHMM(endMin)}${movable ? " · ลากเพื่อย้าย / ลากขอบเพื่อปรับเวลา" : ""}`}
             style={{
               position: "absolute",
               left: lx, width: Math.min(wx, DAY_PX - lx),
               top: 8, bottom: 8,
               background: color,
               opacity: isDone ? 0.38 : 1,
-              borderRadius: 8, cursor: "pointer", overflow: "hidden",
+              borderRadius: 8, cursor: movable ? "grab" : "pointer", overflow: "hidden",
               display: "flex", alignItems: "center", padding: "0 8px",
-              zIndex: 2,
-              outline: isSelected ? "2.5px solid var(--ink)" : "none",
+              zIndex: isDragging ? 6 : 2,
+              outline: conflict ? "2.5px solid var(--danger)" : isSelected ? "2.5px solid var(--ink)" : "none",
               outlineOffset: 2,
-              boxShadow: isTransit ? `0 2px 12px ${color}99` : isSelected ? "0 2px 8px rgba(0,0,0,.2)" : "0 1px 3px rgba(0,0,0,.14)",
-              transition: "opacity .15s",
+              boxShadow: isDragging ? "0 6px 18px rgba(0,0,0,.28)" : isTransit ? `0 2px 12px ${color}99` : isSelected ? "0 2px 8px rgba(0,0,0,.2)" : "0 1px 3px rgba(0,0,0,.14)",
+              transition: isDragging ? "none" : "opacity .15s",
+              userSelect: "none",
             }}
             className={isTransit ? "pulse" : undefined}
           >
-            <div style={{ fontSize: 11, fontWeight: 700, color: "#fff", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", lineHeight: 1.25 }}>
-              #{sched.order?.orderNumber?.slice(-4)}
-              <span style={{ opacity: .75, marginLeft: 4 }}>{Number(sched.quantityM3||0)}คิว</span>
+            {/* Resize handles — only for movable (scheduled) rows */}
+            {movable && (
+              <>
+                <div
+                  onMouseDown={(e) => onBeginDrag(e, sched, "resize-l")}
+                  style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 7, cursor: "ew-resize", zIndex: 3 }}
+                />
+                <div
+                  onMouseDown={(e) => onBeginDrag(e, sched, "resize-r")}
+                  style={{ position: "absolute", right: 0, top: 0, bottom: 0, width: 7, cursor: "ew-resize", zIndex: 3 }}
+                />
+              </>
+            )}
+            <div style={{ fontSize: 11, fontWeight: 700, color: "#fff", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", lineHeight: 1.25, pointerEvents: "none" }}>
+              {isDragging ? (
+                <span style={{ fontFamily: "var(--mono)" }}>{minToHHMM(startMin)}–{minToHHMM(endMin)}</span>
+              ) : (
+                <>
+                  #{sched.order?.orderNumber?.slice(-4)}
+                  <span style={{ opacity: .75, marginLeft: 4 }}>{Number(sched.quantityM3||0)}คิว</span>
+                </>
+              )}
             </div>
           </div>
         );
@@ -185,10 +219,92 @@ export default function TruckView() {
 
   const { data: trucks    = [], isLoading: lt } = useTrucks();
   const { data: schedules = [], isLoading: ls } = useSchedules();
+  const { data: me } = useMe();
   const { mutate: updateStatus, isPending: updating, variables: uv } = useUpdateScheduleStatus();
+  const { mutate: updateTimes } = useUpdateScheduleTimes();
+
+  // Only dispatchers/admins may drag-reschedule; everyone else sees a read-only board.
+  const canEdit = me?.role === "dispatcher" || me?.role === "admin";
 
   const selSched  = schedules.find((s) => s.id === selectedId) ?? null;
   const selTruck  = selSched ? trucks.find((t) => t.id === selSched.truckId) : null;
+
+  /* ── Drag-to-move / resize ─────────────────────────────────
+     `drag` is the immutable session; `draft` drives the live preview.
+     While dragging, only `draft` changes (deps stay stable) so the document
+     listeners attached by the effect below aren't torn down mid-gesture. */
+  const [drag,    setDrag]    = useState(null); // { id, mode, startClientX, origStart, origEnd, truckId, date }
+  const [draft,   setDraft]   = useState(null); // { id, start, end, conflict }
+  const [dragErr, setDragErr] = useState(null);
+
+  function onBeginDrag(e, sched, mode) {
+    if (!canEdit || sched.status !== "scheduled") return;
+    e.stopPropagation();
+    e.preventDefault();
+    const origStart = toMins(sched.scheduledStartTime);
+    const origEnd   = toMins(sched.scheduledEndTime);
+    setDrag({ id: sched.id, mode, startClientX: e.clientX, origStart, origEnd, truckId: sched.truckId, date: sched.scheduledDate });
+    setDraft({ id: sched.id, start: origStart, end: origEnd, conflict: false });
+  }
+
+  useEffect(() => {
+    if (!drag) return;
+
+    const conflictAt = (s, e) => schedules.some((o) => {
+      if (o.id === drag.id) return false;
+      if (o.truckId !== drag.truckId || o.scheduledDate !== drag.date) return false;
+      if (["completed", "failed"].includes(o.status)) return false;
+      return toMins(o.scheduledStartTime) < e && toMins(o.scheduledEndTime) > s;
+    });
+
+    const compute = (clientX) => {
+      const deltaMin = Math.round((clientX - drag.startClientX) / PX_PER_MIN / SNAP_MIN) * SNAP_MIN;
+      const dur = drag.origEnd - drag.origStart;
+      let s = drag.origStart, e = drag.origEnd;
+      if (drag.mode === "move") {
+        s = drag.origStart + deltaMin; e = drag.origEnd + deltaMin;
+        if (s < 0)        { s = 0; e = dur; }
+        if (e > DAY_MINS) { e = DAY_MINS; s = DAY_MINS - dur; }
+      } else if (drag.mode === "resize-l") {
+        s = Math.min(Math.max(0, drag.origStart + deltaMin), drag.origEnd - SNAP_MIN);
+      } else { // resize-r
+        e = Math.max(Math.min(DAY_MINS, drag.origEnd + deltaMin), drag.origStart + SNAP_MIN);
+      }
+      return { s, e };
+    };
+
+    const onMove = (ev) => {
+      const { s, e } = compute(ev.clientX);
+      setDraft({ id: drag.id, start: s, end: e, conflict: conflictAt(s, e) });
+    };
+
+    const onUp = (ev) => {
+      const { s, e } = compute(ev.clientX);
+      const changed = s !== drag.origStart || e !== drag.origEnd;
+      if (changed && conflictAt(s, e)) {
+        setDragErr("ช่วงเวลาที่เลือกซ้อนทับกับคิวอื่นของรถคันนี้");
+      } else if (changed) {
+        setDragErr(null);
+        updateTimes(
+          { id: drag.id, scheduledStartTime: minToHHMM(s), scheduledEndTime: minToHHMM(e) },
+          { onError: (err) => setDragErr(err?.response?.data?.error ?? "ปรับเวลาไม่สำเร็จ") },
+        );
+      }
+      setDrag(null);
+      setDraft(null);
+    };
+
+    document.body.style.userSelect = "none";
+    document.body.style.cursor = drag.mode === "move" ? "grabbing" : "ew-resize";
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+    return () => {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+      document.body.style.userSelect = "";
+      document.body.style.cursor = "";
+    };
+  }, [drag, schedules, updateTimes]);
 
   // Auto-scroll to current time on load
   useEffect(() => {
@@ -218,6 +334,23 @@ export default function TruckView() {
             เลื่อนซ้ายขวา (scroll) เพื่อดูทุกช่วงเวลา
           </div>
         </div>
+
+        {/* Drag error toast */}
+        {dragErr && (
+          <div
+            onClick={() => setDragErr(null)}
+            style={{
+              display: "flex", alignItems: "center", gap: 8, cursor: "pointer",
+              background: "var(--danger-bg, #FCEBEA)", color: "var(--danger)",
+              border: "1px solid var(--danger)", borderRadius: 10,
+              padding: "9px 13px", marginBottom: 14, fontSize: 13, fontWeight: 600,
+            }}
+          >
+            <AlertTriangle size={15} style={{ flexShrink: 0 }} />
+            <span style={{ flex: 1 }}>{dragErr}</span>
+            <X size={14} />
+          </div>
+        )}
 
         {/* Summary chips */}
         {!isLoading && (
@@ -328,6 +461,9 @@ export default function TruckView() {
                             isToday={d === TODAY}
                             selectedId={selectedId}
                             onSelect={(s) => setSelectedId(s.id === selectedId ? null : s.id)}
+                            draft={draft}
+                            onBeginDrag={onBeginDrag}
+                            canEdit={canEdit}
                           />
                         </div>
                       ))}
@@ -341,7 +477,10 @@ export default function TruckView() {
                     borderTop: "1px solid var(--border)",
                     background: "var(--surface-2)", fontSize: 11.5, color: "var(--ink-3)",
                   }}>
-                    <span>คลิกช่วงเวลาเพื่อดูรายละเอียด</span>
+                    <span>
+                      คลิกเพื่อดูรายละเอียด
+                      {canEdit && " · ลากกล่องเพื่อย้ายเวลา · ลากขอบซ้าย/ขวาเพื่อปรับระยะเวลา (ทีละ 30 นาที)"}
+                    </span>
                     <span style={{ display: "flex", alignItems: "center", gap: 5 }}>
                       <span style={{ width: 26, height: 9, borderRadius: 3, background: "#2B6CF0", display: "inline-block" }} /> จัดคิวแล้ว
                     </span>

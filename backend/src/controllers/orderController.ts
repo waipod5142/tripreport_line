@@ -2,8 +2,9 @@ import { Request, Response } from "express";
 import { and, desc, eq, gte, lte, sql } from "drizzle-orm";
 import { getAuth } from "@clerk/express";
 import { db } from "../db";
-import { orders, orderItems, concreteProducts } from "../db/schema";
+import { orders, orderItems, concreteProducts, deliverySchedules, users } from "../db/schema";
 import { uploadImages, deleteImages } from "../services/cloudinaryUpload";
+import { notifyOrderCancelled } from "../services/lineNotify";
 
 function todayRange() {
   const now = new Date();
@@ -144,9 +145,40 @@ export const deleteOrder = async (req: Request, res: Response) => {
 
     if (!order) return res.status(404).json({ error: "Order not found" });
     if (order.customerId !== userId) return res.status(403).json({ error: "Forbidden" });
-    if (order.status !== "pending") {
-      return res.status(400).json({ error: "Only pending orders can be deleted" });
+
+    // Customers may cancel an order up until a truck is actually on the road.
+    // Once any assigned truck is in_transit (or has completed), deletion is blocked.
+    const deletableStatuses = ["pending", "confirmed", "scheduled"];
+    if (!deletableStatuses.includes(order.status)) {
+      return res.status(400).json({ error: "This order can no longer be deleted" });
     }
+
+    // delivery_schedules has no ON DELETE CASCADE on order_id, so remove any
+    // assigned truck rows first — but refuse if a delivery is already under way.
+    const scheduleRows = await db
+      .select()
+      .from(deliverySchedules)
+      .where(eq(deliverySchedules.orderId, id));
+    const activeRow = scheduleRows.find(
+      (s) => s.status === "in_transit" || s.status === "completed",
+    );
+    if (activeRow) {
+      return res.status(400).json({ error: "Cannot delete — a truck is already delivering this order" });
+    }
+    if (scheduleRows.length) {
+      await db.delete(deliverySchedules).where(eq(deliverySchedules.orderId, id));
+    }
+
+    // Capture details for the cancellation notice before the rows are gone.
+    const [item] = await db
+      .select({ name: concreteProducts.name, qty: orderItems.quantityM3 })
+      .from(orderItems)
+      .leftJoin(concreteProducts, eq(orderItems.productId, concreteProducts.id))
+      .where(eq(orderItems.orderId, id));
+    const [customer] = await db
+      .select({ lineUserId: users.lineUserId })
+      .from(users)
+      .where(eq(users.id, userId));
 
     const photoUrls: string[] = Array.isArray(order.sitePhotoUrls) ? order.sitePhotoUrls as string[] : [];
     if (photoUrls.length) {
@@ -155,6 +187,15 @@ export const deleteOrder = async (req: Request, res: Response) => {
 
     // order_items cascade-deletes automatically
     await db.delete(orders).where(eq(orders.id, id));
+
+    // Fire LINE cancellation notice — best-effort, never blocks the response.
+    notifyOrderCancelled({
+      to: customer?.lineUserId,
+      orderNumber: order.orderNumber,
+      productName: item?.name ?? undefined,
+      quantityM3: item?.qty ?? undefined,
+      siteLabel: order.deliveryLabel ?? order.deliveryArea ?? undefined,
+    }).catch((err) => console.error("[LINE] cancellation notice failed:", err));
 
     res.status(200).json({ success: true });
   } catch (error) {

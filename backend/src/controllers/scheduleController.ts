@@ -219,6 +219,69 @@ export const replaceSchedule = async (req: Request, res: Response) => {
   }
 };
 
+/**
+ * PATCH /api/schedule/:id
+ * Adjust a single schedule row's time window (drag-to-move / resize on the Gantt).
+ * Body: { scheduledStartTime, scheduledEndTime, scheduledDate? }
+ * Only "scheduled" rows can be moved; conflict-checked against the truck's other
+ * rows (excluding itself).
+ */
+export const updateScheduleTimes = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { scheduledStartTime, scheduledEndTime, scheduledDate } = req.body as {
+      scheduledStartTime?: string;
+      scheduledEndTime?: string;
+      scheduledDate?: string;
+    };
+
+    if (!scheduledStartTime || !scheduledEndTime) {
+      return res.status(400).json({ error: "Missing scheduledStartTime or scheduledEndTime" });
+    }
+
+    const norm = (t: string) => t.slice(0, 5);
+    if (norm(scheduledStartTime) >= norm(scheduledEndTime)) {
+      return res.status(400).json({ error: "เวลาเริ่มต้องก่อนเวลาสิ้นสุด" });
+    }
+
+    const [row] = await db.select().from(deliverySchedules).where(eq(deliverySchedules.id, id));
+    if (!row) return res.status(404).json({ error: "Schedule not found" });
+    if (row.status !== "scheduled") {
+      return res.status(400).json({ error: "แก้ไขเวลาได้เฉพาะเที่ยวที่ยังไม่ออกรถ" });
+    }
+
+    const date = scheduledDate ?? row.scheduledDate;
+
+    // Conflict check — same truck + date, excluding this row itself
+    const truckScheds = await db.select().from(deliverySchedules)
+      .where(and(eq(deliverySchedules.truckId, row.truckId), eq(deliverySchedules.scheduledDate, date)));
+
+    const conflict = truckScheds.find((s) => {
+      if (s.id === id) return false;
+      if (["completed", "failed"].includes(s.status)) return false;
+      const sS = norm(s.scheduledStartTime ?? "");
+      const sE = norm(s.scheduledEndTime ?? "");
+      return sS && sE && sS < norm(scheduledEndTime) && sE > norm(scheduledStartTime);
+    });
+
+    if (conflict) {
+      const [truck] = await db.select().from(trucks).where(eq(trucks.id, row.truckId));
+      return res.status(409).json({ error: `รถ ${truck?.registration ?? row.truckId} มีคิวซ้อนทับในช่วงเวลานี้แล้ว` });
+    }
+
+    const [updated] = await db
+      .update(deliverySchedules)
+      .set({ scheduledStartTime, scheduledEndTime, scheduledDate: date })
+      .where(eq(deliverySchedules.id, id))
+      .returning();
+
+    res.status(200).json(updated);
+  } catch (error) {
+    console.error("Error updating schedule times:", error);
+    res.status(500).json({ error: "Failed to update schedule times" });
+  }
+};
+
 export const deleteSchedule = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
