@@ -494,8 +494,8 @@ export default function MyOrdersPage() {
 
                   <OrderTracker order={order} />
 
-                  {/* Delete button — pending orders only */}
-                  {order.status === "pending" && (
+                  {/* Delete button — until a truck is actually on the road */}
+                  {["pending", "confirmed", "scheduled"].includes(order.status) && (
                     <div
                       style={{ marginTop: 12 }}
                       onClick={(e) => e.stopPropagation()}
@@ -506,19 +506,26 @@ export default function MyOrdersPage() {
                           กำลังลบออเดอร์…
                         </div>
                       ) : confirmId === order.id ? (
-                        <div style={{ display: "flex", gap: 8 }}>
-                          <button
-                            onClick={() => setConfirmId(null)}
-                            style={{ flex: 1, height: 36, borderRadius: 10, border: "1px solid var(--border-2)", background: "var(--surface-3)", color: "var(--ink-2)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}
-                          >
-                            ยกเลิก
-                          </button>
-                          <button
-                            onClick={() => confirmDelete(order.id)}
-                            style={{ flex: 1, height: 36, borderRadius: 10, border: "none", background: "var(--danger)", color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}
-                          >
-                            <Trash2 size={13} /> ยืนยันลบออเดอร์
-                          </button>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                          {order.schedules?.length > 0 && (
+                            <div style={{ fontSize: 11.5, color: "var(--danger)", background: "#FCEBEA", borderRadius: 8, padding: "7px 10px", lineHeight: 1.4 }}>
+                              ออเดอร์นี้จัดคิวรถ {order.schedules.length} คันแล้ว — การลบจะยกเลิกคิวรถทั้งหมด
+                            </div>
+                          )}
+                          <div style={{ display: "flex", gap: 8 }}>
+                            <button
+                              onClick={() => setConfirmId(null)}
+                              style={{ flex: 1, height: 36, borderRadius: 10, border: "1px solid var(--border-2)", background: "var(--surface-3)", color: "var(--ink-2)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}
+                            >
+                              ยกเลิก
+                            </button>
+                            <button
+                              onClick={() => confirmDelete(order.id)}
+                              style={{ flex: 1, height: 36, borderRadius: 10, border: "none", background: "var(--danger)", color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}
+                            >
+                              <Trash2 size={13} /> ยืนยันลบออเดอร์
+                            </button>
+                          </div>
                         </div>
                       ) : (
                         <button

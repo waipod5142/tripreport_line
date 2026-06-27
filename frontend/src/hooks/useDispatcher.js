@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   getAllOrders, updateOrderStatus,
   getTrucks, seedTrucks,
-  getDrivers, getSchedules, createSchedule, replaceSchedule, updateScheduleStatus,
+  getDrivers, getSchedules, createSchedule, replaceSchedule, updateScheduleStatus, updateScheduleTimes,
   updateSelfRole,
 } from "../lib/api";
 
@@ -62,6 +62,18 @@ export const useUpdateScheduleStatus = () => {
   return useMutation({
     mutationFn: updateScheduleStatus,
     onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["schedules"] });
+      qc.invalidateQueries({ queryKey: ["allOrders"] });
+    },
+  });
+};
+
+export const useUpdateScheduleTimes = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: updateScheduleTimes,
+    // Always refetch on settle so a rejected (conflict) drag snaps back to truth.
+    onSettled: () => {
       qc.invalidateQueries({ queryKey: ["schedules"] });
       qc.invalidateQueries({ queryKey: ["allOrders"] });
     },
