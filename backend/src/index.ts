@@ -8,6 +8,7 @@ import { clerkMiddleware } from "@clerk/express";
 import userRoutes from "./routes/userRoutes";
 import tripRoutes from "./routes/tripRoutes";
 import lineDriverRoutes from "./routes/lineDriverRoutes";
+import lineIngestRoutes from "./routes/lineIngestRoutes";
 
 const app = express();
 
@@ -32,6 +33,7 @@ app.get("/api/health", (req, res) => {
 app.use("/api/users", userRoutes);
 app.use("/api/trips", tripRoutes);
 app.use("/api/line-drivers", lineDriverRoutes);
+app.use("/api/line", lineIngestRoutes);
 
 if (ENV.NODE_ENV === "production") {
   const __dirname = path.resolve();
