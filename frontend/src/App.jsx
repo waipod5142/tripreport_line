@@ -3,6 +3,7 @@ import { SignIn } from "@clerk/clerk-react";
 import TripsPage from "./pages/TripsPage";
 import SummaryPage from "./pages/SummaryPage";
 import DriversPage from "./pages/DriversPage";
+import AdminUsersPage from "./pages/AdminUsersPage";
 import PendingPage from "./pages/PendingPage";
 import LoadingSpinner from "./components/LoadingSpinner";
 import useAuthReq from "./hooks/useAuthReq";
@@ -49,6 +50,7 @@ function App() {
       <Route path="/" element={<Protected><TripsPage /></Protected>} />
       <Route path="/summary" element={<Protected><SummaryPage /></Protected>} />
       <Route path="/drivers" element={<Protected><DriversPage /></Protected>} />
+      <Route path="/admin/users" element={<Protected adminOnly><AdminUsersPage /></Protected>} />
       <Route path="*" element={<Navigate to="/" />} />
     </Routes>
   );
