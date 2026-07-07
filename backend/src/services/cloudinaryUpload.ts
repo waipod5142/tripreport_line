@@ -9,7 +9,7 @@ cloudinary.config({
 
 export async function uploadImage(dataUrl: string): Promise<string> {
   const result = await cloudinary.uploader.upload(dataUrl, {
-    folder: "concreteflow/site-photos",
+    folder: "tripreport/line-images",
     resource_type: "image",
   });
   return result.secure_url;
@@ -25,7 +25,7 @@ export async function uploadImages(dataUrls: string[]): Promise<string[]> {
 
 /** Extract Cloudinary public_id from a secure_url, e.g.
  *  https://res.cloudinary.com/{cloud}/image/upload/v123/{public_id}.jpg
- *  → "concreteflow/site-photos/abc123"
+ *  → "tripreport/line-images/abc123"
  */
 function publicIdFromUrl(url: string): string | null {
   const match = url.match(/\/upload\/(?:v\d+\/)?(.+)\.[^.]+$/);

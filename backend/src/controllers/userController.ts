@@ -1,9 +1,11 @@
 import type { Request, Response } from "express";
-import * as queries from "../db/queries";
 import { eq } from "drizzle-orm";
 import { getAuth } from "@clerk/express";
 import { db } from "../db";
 import { users } from "../db/schema";
+import { ENV } from "../config/env";
+
+const VALID_ROLES = ["pending", "staff", "admin"];
 
 export async function syncUser(req: Request, res: Response) {
   try {
@@ -11,12 +13,23 @@ export async function syncUser(req: Request, res: Response) {
     if (!userId) return res.status(401).json({ error: "Unauthorized" });
 
     const { email, name, imageUrl } = req.body;
-
     if (!email || !name || !imageUrl) {
       return res.status(400).json({ error: "Email, name, and imageUrl are required" });
     }
 
-    const user = await queries.upsertUser({ id: userId, email, name, imageUrl });
+    // Bootstrap: the ADMIN_EMAIL account is always admin, so a fresh DB can't lock you out
+    const isBootstrapAdmin =
+      !!ENV.ADMIN_EMAIL && String(email).toLowerCase() === ENV.ADMIN_EMAIL.toLowerCase();
+    const profile = { email, name, imageUrl };
+
+    const [user] = await db
+      .insert(users)
+      .values({ id: userId, ...profile, ...(isBootstrapAdmin ? { role: "admin" } : {}) })
+      .onConflictDoUpdate({
+        target: users.id,
+        set: { ...profile, ...(isBootstrapAdmin ? { role: "admin" } : {}) },
+      })
+      .returning();
 
     res.status(200).json(user);
   } catch (error) {
@@ -40,45 +53,6 @@ export async function getMe(req: Request, res: Response) {
   }
 }
 
-export async function updateMe(req: Request, res: Response) {
-  try {
-    const { userId } = getAuth(req);
-    if (!userId) return res.status(401).json({ error: "Unauthorized" });
-
-    const { phone, role } = req.body;
-    const patch: Record<string, string> = {};
-    if (phone !== undefined) patch.phone = phone;
-    if (role !== undefined) {
-      const valid = ["customer", "dispatcher", "driver", "admin"];
-      if (!valid.includes(role)) return res.status(400).json({ error: "Invalid role" });
-      patch.role = role;
-    }
-
-    const [updated] = await db
-      .update(users)
-      .set(patch)
-      .where(eq(users.id, userId))
-      .returning();
-
-    if (!updated) return res.status(404).json({ error: "User not found" });
-
-    res.status(200).json(updated);
-  } catch (error) {
-    console.error("Error updating user:", error);
-    res.status(500).json({ error: "Failed to update user" });
-  }
-}
-
-export async function getDrivers(_req: Request, res: Response) {
-  try {
-    const rows = await db.select().from(users).where(eq(users.role, "driver"));
-    res.status(200).json(rows);
-  } catch (error) {
-    console.error("Error fetching drivers:", error);
-    res.status(500).json({ error: "Failed to fetch drivers" });
-  }
-}
-
 export async function getAllUsers(_req: Request, res: Response) {
   try {
     const rows = await db.select().from(users).orderBy(users.createdAt);
@@ -94,17 +68,11 @@ export async function updateUserRole(req: Request, res: Response) {
     const { id } = req.params;
     const { role } = req.body;
 
-    const validRoles = ["customer", "dispatcher", "driver", "admin"];
-    if (!validRoles.includes(role)) {
+    if (!VALID_ROLES.includes(role)) {
       return res.status(400).json({ error: "Invalid role" });
     }
 
-    const [updated] = await db
-      .update(users)
-      .set({ role })
-      .where(eq(users.id, id))
-      .returning();
-
+    const [updated] = await db.update(users).set({ role }).where(eq(users.id, id)).returning();
     if (!updated) return res.status(404).json({ error: "User not found" });
 
     res.status(200).json(updated);
