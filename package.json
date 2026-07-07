@@ -1,7 +1,7 @@
 {
-  "name": "concrete-ordering",
+  "name": "tripreport-line",
   "version": "1.0.0",
-  "description": "",
+  "description": "LINE group trip reports → Claude extraction → Postgres + Cloudinary, with a role-gated dashboard",
   "main": "index.js",
   "engines": {
     "node": ">=20.0.0"

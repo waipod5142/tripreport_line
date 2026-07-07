@@ -1,69 +1,20 @@
-<h1 align="center">✨ Full-Stack Product Store ✨</h1>
+# TripReport — LINE Trip Report System
 
-![Demo App](/frontend/public/screenshot-for-readme.png)
+Drivers report trips in a LINE group → a thin Apps Script relay forwards each
+message to the Express backend → Claude extracts driver / truck / origin /
+destination / status / problem → pictures go to Cloudinary, trips go to
+PostgreSQL → staff view everything in a role-gated React dashboard.
 
-✨ Highlights
+- Setup for the LINE bot: [`LINE_TripBot_SETUP.md`](LINE_TripBot_SETUP.md)
+- Architecture & API reference: [`CLAUDE.md`](CLAUDE.md)
+- Design spec: `docs/superpowers/specs/2026-07-06-line-trip-report-design.md`
 
-- 🛒 Full-Stack Product Store
-- 🧰 REST API with Node.js & Express
-- 🗄️ PostgreSQL Database Integration
-- 🧬 Drizzle ORM for type-safe database queries
-- 🟦 TypeScript Powered API
-- ⚛️ Modern React Frontend
-- 🎨 Beautiful UI with Tailwind CSS & DaisyUI
-- ⚡ Data Fetching & Caching using TanStack Query
-- 🔄 End-to-End API ↔ Frontend Integration
-- 🧠 Clean Project Structure & Best Practices
-- 🧪 Hands-on Learning by Building (not just theory)
-- 🚀 Production Deployment with Live URL
-- 📎 Resume-Ready Project
-- 💸 100% Free Tools & Setup
-- 📂 Free & Open-Source Code
-
----
-
-## 🧪 .env Setup
-
-### Backend (`/backend`)
+## Quick start (development)
 
 ```bash
-PORT=3000
-DATABASE_URL=<YOUR_DB_URL>
-NODE_ENV=development
+# backend  (needs backend/.env — see CLAUDE.md → Environment Variables)
+cd backend && npm install && npm run db:push && npm run dev
 
-CLERK_PUBLISHABLE_KEY=<YOUR_CLERK_PUBLISHABLE_KEY>
-CLERK_SECRET_KEY=<YOUR_CLERK_SECRET_KEY>
-
-FRONTEND_URL=http://localhost:5173
-```
-
-### Frontend (`/frontend`)
-
-```bash
-VITE_CLERK_PUBLISHABLE_KEY=<YOUR_CLERK_PUBLISHABLE_KEY>
-
-VITE_API_URL=http://localhost:3000/api
-
-```
-
----
-
-## 🔧 Run the Backend
-
-```bash
-
-cd backend
-npm install
-npm run dev
-```
-
----
-
-## 🔧 Run the Frontend
-
-```
-bash
-cd frontend
-npm install
-npm run dev
+# frontend (needs frontend/.env)
+cd frontend && npm install && npm run dev
 ```
