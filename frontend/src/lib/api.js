@@ -1,6 +1,6 @@
 import api from "./axios";
 
-// USERS API
+// USERS
 export const syncUser = async (userData) => {
   const { data } = await api.post("/users/sync", userData);
   return data;
@@ -11,125 +11,39 @@ export const getMe = async () => {
   return data;
 };
 
-// Products API
-export const getAllProducts = async () => {
-  const { data } = await api.get("/products");
+export const getAllUsers = async () => {
+  const { data } = await api.get("/users");
   return data;
 };
 
-export const getProductById = async (id) => {
-  const { data } = await api.get(`/products/${id}`);
+export const updateUserRole = async ({ id, role }) => {
+  const { data } = await api.patch(`/users/${id}/role`, { role });
   return data;
 };
 
-export const getMyProducts = async () => {
-  const { data } = await api.get("/products/my");
+// TRIPS
+export const getTrips = async (params) => {
+  const { data } = await api.get("/trips", { params });
   return data;
 };
 
-export const createProduct = async (productData) => {
-  const { data } = await api.post("/products", productData);
+export const getTripSummary = async (date) => {
+  const { data } = await api.get("/trips/summary", { params: { date } });
   return data;
 };
 
-export const updateProduct = async ({ id, ...productData }) => {
-  const { data } = await api.put(`/products/${id}`, productData);
+export const deleteTrip = async (id) => {
+  const { data } = await api.delete(`/trips/${id}`);
   return data;
 };
 
-export const deleteProduct = async (id) => {
-  const { data } = await api.delete(`/products/${id}`);
+// LINE DRIVERS
+export const getLineDrivers = async () => {
+  const { data } = await api.get("/line-drivers");
   return data;
 };
 
-// Concrete Products API
-export const getConcreteProducts = async () => {
-  const { data } = await api.get("/concrete-products");
-  return data;
-};
-
-// Orders API
-export const createOrder = async (orderData) => {
-  const { data } = await api.post("/orders", orderData);
-  return data;
-};
-
-export const getMyOrders = async () => {
-  const { data } = await api.get("/orders/my");
-  return data;
-};
-
-export const deleteOrder = async (id) => {
-  const { data } = await api.delete(`/orders/${id}`);
-  return data;
-};
-
-// Dispatcher API
-export const getAllOrders = async () => {
-  const { data } = await api.get("/orders");
-  return data;
-};
-
-export const updateOrderStatus = async ({ id, status, preferredDate, preferredTimeSlot }) => {
-  const body = { status };
-  if (preferredDate)     body.preferredDate     = preferredDate;
-  if (preferredTimeSlot) body.preferredTimeSlot = preferredTimeSlot;
-  const { data } = await api.patch(`/orders/${id}/status`, body);
-  return data;
-};
-
-export const getTrucks = async () => {
-  const { data } = await api.get("/trucks");
-  return data;
-};
-
-export const seedTrucks = async () => {
-  const { data } = await api.post("/trucks/seed");
-  return data;
-};
-
-export const getDrivers = async () => {
-  const { data } = await api.get("/users/drivers");
-  return data;
-};
-
-export const getSchedules = async () => {
-  const { data } = await api.get("/schedule");
-  return data;
-};
-
-export const createSchedule = async (scheduleData) => {
-  const { data } = await api.post("/schedule", scheduleData);
-  return data;
-};
-
-export const replaceSchedule = async (scheduleData) => {
-  const { data } = await api.put("/schedule", scheduleData);
-  return data;
-};
-
-export const updateScheduleStatus = async ({ id, status }) => {
-  const { data } = await api.patch(`/schedule/${id}/status`, { status });
-  return data;
-};
-
-export const updateScheduleTimes = async ({ id, scheduledStartTime, scheduledEndTime, scheduledDate }) => {
-  const { data } = await api.patch(`/schedule/${id}`, { scheduledStartTime, scheduledEndTime, scheduledDate });
-  return data;
-};
-
-export const updateSelfRole = async (role) => {
-  const { data } = await api.patch("/users/me", { role });
-  return data;
-};
-
-// Comments API
-export const createComment = async ({ productId, content }) => {
-  const { data } = await api.post(`/comments/${productId}`, { content });
-  return data;
-};
-
-export const deleteComment = async ({ commentId }) => {
-  const { data } = await api.delete(`/comments/${commentId}`);
+export const updateLineDriver = async ({ lineUserId, manualName, defaultTruck }) => {
+  const { data } = await api.patch(`/line-drivers/${lineUserId}`, { manualName, defaultTruck });
   return data;
 };

@@ -1,4 +1,4 @@
-/* ConcreteFlow Design System — scoped under .cf parent */
+/* TripReport Design System — scoped under .cf parent (scope class kept from ConcreteFlow) */
 
 @keyframes cfFadeIn {
   from { opacity: 0; transform: translateY(7px); }
@@ -196,6 +196,7 @@
 .cf .badge-in_transit { color: var(--st-transit);  background: var(--st-transit-bg); }
 .cf .badge-delivered { color: var(--st-delivered); background: var(--st-delivered-bg); }
 .cf .badge-cancelled { color: var(--st-cancelled); background: var(--st-cancelled-bg); }
+.cf .badge-problem   { color: var(--danger);       background: var(--danger-bg); }
 
 /* ── Form fields ─────────────────────────────────────── */
 .cf input.field, .cf select.field, .cf textarea.field {
@@ -393,15 +394,3 @@
   }
   .cf .order-footer-total { font-size: 13px; }
 }
-
-/* ── react-datepicker overrides ─────────────────────────── */
-.datepicker-wrapper { width: 100%; }
-.datepicker-wrapper .react-datepicker__input-container input { width: 100%; }
-.react-datepicker { font-family: var(--font); border: 1px solid var(--border); border-radius: var(--r); box-shadow: var(--sh-md); }
-.react-datepicker__header { background: var(--surface-2); border-bottom: 1px solid var(--border); border-radius: var(--r) var(--r) 0 0; }
-.react-datepicker__current-month { font-weight: 700; color: var(--ink); }
-.react-datepicker__day--selected { background: var(--primary) !important; border-radius: 8px; }
-.react-datepicker__day--keyboard-selected { background: var(--primary-50); border-radius: 8px; color: var(--primary-700); }
-.react-datepicker__day:hover { background: var(--primary-50); border-radius: 8px; }
-.react-datepicker__day--disabled { color: var(--ink-4) !important; }
-.react-datepicker__navigation-icon::before { border-color: var(--ink-3); }

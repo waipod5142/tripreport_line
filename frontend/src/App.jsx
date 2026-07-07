@@ -1,25 +1,26 @@
-import { Navigate, Outlet, Route, Routes } from "react-router";
-import Navbar from "./components/Navbar";
-import HomePage from "./pages/HomePage";
-import ProductPage from "./pages/ProductPage";
-import ProfilePage from "./pages/ProfilePage";
-import CreatePage from "./pages/CreatePage";
-import EditProductPage from "./pages/EditProductPage";
-import OrderPage from "./pages/OrderPage";
-import MyOrdersPage from "./pages/MyOrdersPage";
-import DispatcherDashboard from "./pages/DispatcherDashboard";
-import TruckView from "./pages/TruckView";
+import { Navigate, Route, Routes } from "react-router";
+import { SignIn } from "@clerk/clerk-react";
+import TripsPage from "./pages/TripsPage";
+import PendingPage from "./pages/PendingPage";
+import LoadingSpinner from "./components/LoadingSpinner";
 import useAuthReq from "./hooks/useAuthReq";
 import useUserSync from "./hooks/useUserSync";
+import { useMe } from "./hooks/useMe";
+import "./tripreport.css";
 
-const LegacyLayout = () => (
-  <div className="min-h-screen bg-base-100">
-    <Navbar />
-    <main className="max-w-5xl mx-auto px-4 py-8">
-      <Outlet />
-    </main>
-  </div>
-);
+function Protected({ adminOnly = false, children }) {
+  const { data: me, isLoading, isError } = useMe();
+  if (isLoading) {
+    return (
+      <div className="cf" style={{ minHeight: "100vh", display: "grid", placeItems: "center" }}>
+        <LoadingSpinner />
+      </div>
+    );
+  }
+  if (isError || !me || me.role === "pending") return <PendingPage />;
+  if (adminOnly && me.role !== "admin") return <Navigate to="/" />;
+  return children;
+}
 
 function App() {
   const { isClerkLoaded, isSignedIn } = useAuthReq();
@@ -27,42 +28,24 @@ function App() {
 
   if (!isClerkLoaded) return null;
 
+  if (!isSignedIn) {
+    return (
+      <div className="cf" style={{ minHeight: "100vh", display: "grid", placeItems: "center", padding: 24 }}>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 18 }}>
+          <div style={{ textAlign: "center" }}>
+            <div style={{ fontSize: 24, fontWeight: 700 }}>TripReport</div>
+            <div className="muted">รายงานเที่ยวรถบรรทุกจากกลุ่ม LINE</div>
+          </div>
+          <SignIn routing="hash" />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <Routes>
-      {/* Legacy Concrete Ordering layout */}
-      <Route element={<LegacyLayout />}>
-        <Route path="/" element={<HomePage />} />
-        <Route path="/product/:id" element={<ProductPage />} />
-        <Route
-          path="/profile"
-          element={isSignedIn ? <ProfilePage /> : <Navigate to="/" />}
-        />
-        <Route
-          path="/create"
-          element={isSignedIn ? <CreatePage /> : <Navigate to="/" />}
-        />
-        <Route
-          path="/edit/:id"
-          element={isSignedIn ? <EditProductPage /> : <Navigate to="/" />}
-        />
-        {/* ConcreteFlow routes — full-screen sidebar layout */}
-        <Route
-          path="/order"
-          element={isSignedIn ? <OrderPage /> : <Navigate to="/" />}
-        />
-        <Route
-          path="/my-orders"
-          element={isSignedIn ? <MyOrdersPage /> : <Navigate to="/" />}
-        />
-        <Route
-          path="/dispatch"
-          element={isSignedIn ? <DispatcherDashboard /> : <Navigate to="/" />}
-        />
-        <Route
-          path="/trucks"
-          element={isSignedIn ? <TruckView /> : <Navigate to="/" />}
-        />
-      </Route>
+      <Route path="/" element={<Protected><TripsPage /></Protected>} />
+      <Route path="*" element={<Navigate to="/" />} />
     </Routes>
   );
 }
