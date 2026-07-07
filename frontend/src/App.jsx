@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from "react-router";
 import { SignIn } from "@clerk/clerk-react";
 import TripsPage from "./pages/TripsPage";
+import SummaryPage from "./pages/SummaryPage";
 import PendingPage from "./pages/PendingPage";
 import LoadingSpinner from "./components/LoadingSpinner";
 import useAuthReq from "./hooks/useAuthReq";
@@ -45,6 +46,7 @@ function App() {
   return (
     <Routes>
       <Route path="/" element={<Protected><TripsPage /></Protected>} />
+      <Route path="/summary" element={<Protected><SummaryPage /></Protected>} />
       <Route path="*" element={<Navigate to="/" />} />
     </Routes>
   );
