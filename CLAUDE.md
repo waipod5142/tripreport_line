@@ -107,7 +107,7 @@ FRONTEND_URL=http://localhost:5173
 CLERK_PUBLISHABLE_KEY= / CLERK_SECRET_KEY=
 CLOUDINARY_CLOUD_NAME= / CLOUDINARY_API_KEY= / CLOUDINARY_API_SECRET=
 ANTHROPIC_API_KEY=sk-ant-...
-ANTHROPIC_MODEL=                     # optional, default claude-opus-4-8
+ANTHROPIC_MODEL=                     # optional, default claude-opus-4-8; set claude-haiku-4-5 to cut cost ~5x (verify Thai extraction quality)
 LINE_INGEST_KEY=                     # long random; must match BotConfig INGEST_KEY
 ADMIN_EMAIL=                         # auto-admin bootstrap account
 ```
