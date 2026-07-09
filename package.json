@@ -12,14 +12,14 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/waipod5142/concreteorder.git"
+    "url": "git+https://github.com/waipod5142/tripreport_line.git"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
   "bugs": {
-    "url": "https://github.com/waipod5142/concreteorder/issues"
+    "url": "https://github.com/waipod5142/tripreport_line/issues"
   },
-  "homepage": "https://github.com/waipod5142/concreteorder#readme"
+  "homepage": "https://github.com/waipod5142/tripreport_line#readme"
 }
