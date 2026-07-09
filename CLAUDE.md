@@ -12,8 +12,8 @@ LINE group → LINE_TripBot.gs (Apps Script thin relay)
   · downloads image bytes · fetches sender display name (cached)
   · POST /api/line/ingest  (X-Ingest-Key shared secret)
 → Express backend
-  1. Claude extraction (services/tripExtract.ts — text or vision,
-     structured output; model env ANTHROPIC_MODEL, default claude-opus-4-8)
+  1. Claude extraction (services/tripExtract.ts — text or vision, structured
+     output; ANTHROPIC_MODEL, code default claude-opus-4-8, this deploy haiku-4-5)
   2. is_trip_report=false → stop (nothing stored)
   3. image → Cloudinary (folder tripreport/line-images)
   4. upsert line_drivers · insert trips (lineMessageId UNIQUE = dedupe)
@@ -23,6 +23,17 @@ LINE group → LINE_TripBot.gs (Apps Script thin relay)
 The LINE channel token lives only in the BotConfig sheet (backend never calls
 LINE). The Anthropic key lives only in backend env. Design spec:
 `docs/superpowers/specs/2026-07-06-line-trip-report-design.md`.
+
+## Status
+
+Complete and live-verified on **2026-07-09** — every layer exercised end to
+end (schema push, ingest endpoint, text + vision extraction, dashboard build).
+Repo: https://github.com/waipod5142/tripreport_line. This deployment runs
+`ANTHROPIC_MODEL=claude-haiku-4-5` — verified adequate for Thai trip extraction
+and ~5× cheaper than the `claude-opus-4-8` code default. **Production rollout**
+(deploy backend env vars, paste the Apps Script relay, wire the LINE webhook)
+is the remaining step — see the final section of
+`docs/superpowers/plans/2026-07-07-line-trip-report.md`.
 
 ## Stack
 
@@ -129,5 +140,8 @@ npm run build && npm run start      # production (root package.json)
 - The relay always returns 200 to LINE; failures are visible in the sheet's
   Forward Status column and replayable (DB dedupes by lineMessageId).
 - Cloudinary failure does not lose the trip (stored with imageUrl null).
+- A too-small image (e.g. 1×1 px) makes the Anthropic API return
+  400 "Could not process image", which surfaces as a 502 (the correct
+  extraction-failure path); real driver photos are well above the size floor.
 - No test framework — verify with tsc / vite build / curl smoke tests
   (see docs/superpowers/plans/2026-07-07-line-trip-report.md).
