@@ -4,14 +4,14 @@ import { ENV } from "../config/env";
 const DEFAULT_MODEL = "claude-opus-4-8";
 
 // Ported verbatim from LINE_TripBot.gs — what the AI must return for every message/image
+// is_trip_report is intentionally LAST: structured output is generated in
+// property order, so the model extracts the concrete fields first and then
+// classifies from what it actually found. Putting the boolean first made the
+// weaker (Haiku) model commit before extracting and mislabel real trips as
+// non-trips ~50% of the time — verified 2026-07-12.
 const EXTRACT_SCHEMA = {
   type: "object",
   properties: {
-    is_trip_report: {
-      type: "boolean",
-      description:
-        "true only if the message/image contains information about a truck trip, job assignment, loading/unloading, or a dispatching problem",
-    },
     driver_name: { type: "string", description: "Driver name if mentioned, else empty string" },
     truck: { type: "string", description: "Truck plate/number, e.g. 71-6213. Empty string if not found" },
     origin: { type: "string", description: "Trip origin (ต้นทาง). Empty string if not found" },
@@ -22,8 +22,13 @@ const EXTRACT_SCHEMA = {
     },
     problem: { type: "string", description: "Problem/challenge reported (ปัญหา), empty string if none" },
     notes: { type: "string", description: "Other useful details: cargo, weight, document numbers, times" },
+    is_trip_report: {
+      type: "boolean",
+      description:
+        "Decide this AFTER the fields above. Set true if the message/image is any truck-trip, job-assignment, loading/unloading, or dispatching-problem update — e.g. if truck, origin, destination, status, or problem above is non-empty. Set false ONLY for pure chat, greetings, or stickers with no job information.",
+    },
   },
-  required: ["is_trip_report", "driver_name", "truck", "origin", "destination", "status", "problem", "notes"],
+  required: ["driver_name", "truck", "origin", "destination", "status", "problem", "notes", "is_trip_report"],
   additionalProperties: false,
 } as const;
 
