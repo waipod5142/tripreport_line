@@ -8,6 +8,7 @@ import { clerkMiddleware } from "@clerk/express";
 import userRoutes from "./routes/userRoutes";
 import tripRoutes from "./routes/tripRoutes";
 import lineDriverRoutes from "./routes/lineDriverRoutes";
+import lineMessageRoutes from "./routes/lineMessageRoutes";
 import lineIngestRoutes from "./routes/lineIngestRoutes";
 
 const app = express();
@@ -25,6 +26,7 @@ app.get("/api/health", (req, res) => {
       users: "/api/users",
       trips: "/api/trips",
       lineDrivers: "/api/line-drivers",
+      lineMessages: "/api/line-messages",
       ingest: "/api/line/ingest",
     },
   });
@@ -33,6 +35,7 @@ app.get("/api/health", (req, res) => {
 app.use("/api/users", userRoutes);
 app.use("/api/trips", tripRoutes);
 app.use("/api/line-drivers", lineDriverRoutes);
+app.use("/api/line-messages", lineMessageRoutes);
 app.use("/api/line", lineIngestRoutes);
 
 if (ENV.NODE_ENV === "production") {

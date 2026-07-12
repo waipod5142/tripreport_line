@@ -10,7 +10,8 @@
 //   2. logs every message to the LineUserCapture sheet (raw safety net)
 //   3. downloads image bytes from LINE
 //   4. fetches the sender's display name (cached)
-//   5. forwards text/base64-image to the backend with X-Ingest-Key
+//   5. forwards every message (text, base64-image, or bare type) to the
+//      backend with X-Ingest-Key — the backend archives all, extracts trips
 //
 // Sheets used:
 //   BotConfig       — key/value config (see CONFIG KEYS below)
@@ -109,12 +110,8 @@ function handleEvent_(event) {
     return;
   }
 
-  const msgType = event.message.type;
-  if (msgType !== "text" && msgType !== "image") {
-    setForwardStatus_(rowIndex, "skipped (" + msgType + ")");
-    return;
-  }
-
+  // Forward every message type — the backend archives all of them (stickers,
+  // etc. are logged; only text/image go through AI extraction).
   const status = forwardToBackend_(event);
   setForwardStatus_(rowIndex, status);
 }
@@ -191,7 +188,7 @@ function forwardToBackend_(event) {
   if (msg.type === "text") {
     if (!msg.text || !msg.text.trim()) return "skipped (empty)";
     payload.text = msg.text;
-  } else {
+  } else if (msg.type === "image") {
     const res = UrlFetchApp.fetch("https://api-data.line.me/v2/bot/message/" + msg.id + "/content", {
       headers: { "Authorization": "Bearer " + tbGetLineToken_() },
       muteHttpExceptions: true

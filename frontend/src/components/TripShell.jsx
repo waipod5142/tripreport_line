@@ -1,22 +1,24 @@
 import { Link, useLocation } from "react-router";
 import { useUser, useClerk } from "@clerk/clerk-react";
 import { useState } from "react";
-import { Truck, ClipboardList, CalendarDays, Users, Shield, Menu, X, LogOut } from "lucide-react";
+import { Truck, ClipboardList, MessageSquare, CalendarDays, Users, Shield, Menu, X, LogOut } from "lucide-react";
 import { useMe } from "../hooks/useMe";
 import "../tripreport.css";
 
 const NAV = [
-  { path: "/",        label: "รายงานเที่ยว", Icon: ClipboardList },
-  { path: "/summary", label: "สรุปรายวัน",   Icon: CalendarDays },
-  { path: "/drivers", label: "คนขับ",        Icon: Users },
+  { path: "/",             label: "รายงานเที่ยว", Icon: ClipboardList },
+  { path: "/conversation", label: "บทสนทนา",      Icon: MessageSquare },
+  { path: "/summary",      label: "สรุปรายวัน",   Icon: CalendarDays },
+  { path: "/drivers",      label: "คนขับ",        Icon: Users },
 ];
 const ADMIN_NAV = [{ path: "/admin/users", label: "ผู้ใช้งาน", Icon: Shield }];
 
 const PAGE_TITLES = {
-  "/":            "รายงานเที่ยววิ่งรถบรรทุก",
-  "/summary":     "สรุปรายวัน",
-  "/drivers":     "รายชื่อคนขับ",
-  "/admin/users": "จัดการผู้ใช้งาน",
+  "/":             "รายงานเที่ยววิ่งรถบรรทุก",
+  "/conversation": "บทสนทนากลุ่ม LINE",
+  "/summary":      "สรุปรายวัน",
+  "/drivers":      "รายชื่อคนขับ",
+  "/admin/users":  "จัดการผู้ใช้งาน",
 };
 
 const ROLE_LABELS = { pending: "รอสิทธิ์", staff: "พนักงาน", admin: "ผู้ดูแลระบบ" };

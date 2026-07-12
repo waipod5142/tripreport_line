@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from "react-router";
 import { SignIn } from "@clerk/clerk-react";
 import TripsPage from "./pages/TripsPage";
+import ConversationPage from "./pages/ConversationPage";
 import SummaryPage from "./pages/SummaryPage";
 import DriversPage from "./pages/DriversPage";
 import AdminUsersPage from "./pages/AdminUsersPage";
@@ -48,6 +49,7 @@ function App() {
   return (
     <Routes>
       <Route path="/" element={<Protected><TripsPage /></Protected>} />
+      <Route path="/conversation" element={<Protected><ConversationPage /></Protected>} />
       <Route path="/summary" element={<Protected><SummaryPage /></Protected>} />
       <Route path="/drivers" element={<Protected><DriversPage /></Protected>} />
       <Route path="/admin/users" element={<Protected adminOnly><AdminUsersPage /></Protected>} />

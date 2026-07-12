@@ -37,6 +37,12 @@ export const deleteTrip = async (id) => {
   return data;
 };
 
+// LINE MESSAGES (full conversation archive)
+export const getLineMessages = async (params) => {
+  const { data } = await api.get("/line-messages", { params });
+  return data;
+};
+
 // LINE DRIVERS
 export const getLineDrivers = async () => {
   const { data } = await api.get("/line-drivers");
