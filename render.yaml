@@ -7,6 +7,7 @@ services:
     runtime: node
     plan: free # free web services sleep after ~15 min idle (first webhook after idle is slow; LINE retries). Upgrade to keep warm.
     rootDir: backend
+    healthCheckPath: /api/health # returns 200 JSON; avoids the frontend static block's 500 on "/"
     buildCommand: npm ci --include=dev && npm run build
     # db:push applies the Drizzle schema, then the server starts. Render injects PORT automatically.
     startCommand: npm run db:push && npm run start
