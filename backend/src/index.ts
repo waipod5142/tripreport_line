@@ -49,9 +49,9 @@ app.use("/api/line", lineIngestRoutes);
 
 if (ENV.NODE_ENV === "production") {
   const __dirname = path.resolve();
-
+// serve static files from the frontend build directory
   app.use(express.static(path.join(__dirname, "../frontend/dist")));
-
+// serve index.html for any route that doesn't match an API route - react app
   app.get("/{*any}", (req, res) => {
     res.sendFile(path.join(__dirname, "../frontend/dist/index.html"));
   });
