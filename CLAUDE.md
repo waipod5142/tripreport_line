@@ -4,36 +4,52 @@ Thai trucking company tool: drivers report trips in a LINE group; every
 message/image is captured, AI-extracted into a structured trip record, and
 shown in a role-gated web dashboard.
 
-**Data flow:**
+**Data flow (native webhook — primary path):**
 
 ```
-LINE group → LINE_TripBot.gs (Apps Script thin relay)
-  · dedupe (6-h cache) · raw log → LineUserCapture sheet
-  · downloads image bytes · fetches sender display name (cached)
-  · POST /api/line/ingest  (X-Ingest-Key shared secret)
-→ Express backend
-  1. Claude extraction (services/tripExtract.ts — text or vision, structured
-     output; ANTHROPIC_MODEL, code default claude-opus-4-8, this deploy haiku-4-5)
-  2. is_trip_report=false → stop (nothing stored)
-  3. image → Cloudinary (folder tripreport/line-images)
-  4. upsert line_drivers · insert trips (lineMessageId UNIQUE = dedupe)
+LINE group → LINE platform → POST /api/line/webhook (Express backend)
+  · verify x-line-signature (HMAC-SHA256, channel secret)
+  · ack 200 immediately, then process each event async
+  · download image bytes + fetch display name (channel access token)
+→ services/lineMessageService.ts (processLineMessage — shared core)
+  1. dedupe by lineMessageId
+  2. ARCHIVE raw row → line_messages (the full-conversation record) FIRST
+  3. text/image only → Claude extraction (services/tripExtract.ts, structured
+     output; ANTHROPIC_MODEL, code default claude-opus-4-8)
+  4. is_trip_report=false → stop after archive; stickers/etc. → "logged"
+  5. trip → image → Cloudinary (tripreport/line-images) · insert trips ·
+     link the archived row (isTripReport, tripId)
 → PostgreSQL → React dashboard (Clerk auth, role-gated)
 ```
 
-The LINE channel token lives only in the BotConfig sheet (backend never calls
-LINE). The Anthropic key lives only in backend env. Design spec:
+Every message is stored (line_messages mirrors the old Google Sheet);
+`trips` holds only AI-extracted trip reports. The backend now talks to LINE
+directly — the channel access token + channel secret live in backend env.
+
+**Legacy relay path:** `LINE_TripBot.gs` (Apps Script) → `POST
+/api/line/ingest` (X-Ingest-Key) still works and shares the same
+`processLineMessage` core, but is superseded by the native webhook and only
+kept for manual replay/testing. Design spec:
 `docs/superpowers/specs/2026-07-06-line-trip-report-design.md`.
 
 ## Status
 
-Complete and live-verified on **2026-07-09** — every layer exercised end to
-end (schema push, ingest endpoint, text + vision extraction, dashboard build).
-Repo: https://github.com/waipod5142/tripreport_line. This deployment runs
-`ANTHROPIC_MODEL=claude-haiku-4-5` — verified adequate for Thai trip extraction
-and ~5× cheaper than the `claude-opus-4-8` code default. **Production rollout**
-(deploy backend env vars, paste the Apps Script relay, wire the LINE webhook)
-is the remaining step — see the final section of
-`docs/superpowers/plans/2026-07-07-line-trip-report.md`.
+Core complete and verified end to end. Repo:
+https://github.com/waipod5142/tripreport_line.
+
+Since 2026-07-12 this codebase has: (1) a **native LINE webhook**
+(`/api/line/webhook`, signature-verified, async) so Apps Script + the Google
+Sheet are optional; (2) a **line_messages** archive that stores the full
+conversation, surfaced on a dashboard **Conversation** page; (3) an
+`is_trip_report` extraction fix — the boolean is now **last** in the schema
+so the model classifies after extracting (putting it first made the deployed
+Haiku model drop ~50% of real trips). `claude-haiku-4-5` is only reliable
+*with* this fix; the code default is `claude-opus-4-8`.
+
+**Production rollout is the remaining step:** deploy the backend with env vars
+(incl. `LINE_CHANNEL_ACCESS_TOKEN` + `LINE_CHANNEL_SECRET`), set the LINE
+console Webhook URL to `<host>/api/line/webhook`, and invite the OA into the
+group.
 
 ## Stack
 

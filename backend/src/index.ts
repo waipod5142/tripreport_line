@@ -15,8 +15,16 @@ const app = express();
 
 app.use(cors({ origin: ENV.FRONTEND_URL, credentials: true }));
 app.use(clerkMiddleware()); // attaches auth to req; does not block unauthenticated requests
-// 25mb: LINE photos arrive as base64 (~1.33x the binary size)
-app.use(express.json({ limit: "25mb" }));
+// 25mb: LINE photos arrive as base64 (~1.33x the binary size).
+// `verify` captures the raw body so the LINE webhook can check x-line-signature.
+app.use(
+  express.json({
+    limit: "25mb",
+    verify: (req, _res, buf) => {
+      (req as express.Request & { rawBody?: Buffer }).rawBody = buf;
+    },
+  })
+);
 app.use(express.urlencoded({ extended: true }));
 
 app.get("/api/health", (req, res) => {
@@ -27,6 +35,7 @@ app.get("/api/health", (req, res) => {
       trips: "/api/trips",
       lineDrivers: "/api/line-drivers",
       lineMessages: "/api/line-messages",
+      lineWebhook: "/api/line/webhook",
       ingest: "/api/line/ingest",
     },
   });

@@ -15,5 +15,8 @@ export const ENV = {
   ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
   ANTHROPIC_MODEL: process.env.ANTHROPIC_MODEL,
   LINE_INGEST_KEY: process.env.LINE_INGEST_KEY,
+  // Native LINE webhook (direct — no Apps Script relay):
+  LINE_CHANNEL_ACCESS_TOKEN: process.env.LINE_CHANNEL_ACCESS_TOKEN, // download images, fetch names
+  LINE_CHANNEL_SECRET: process.env.LINE_CHANNEL_SECRET,             // verify x-line-signature
   ADMIN_EMAIL: process.env.ADMIN_EMAIL,
 };
