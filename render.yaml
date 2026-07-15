@@ -1,0 +1,42 @@
+# Backend (Express) deploy for Render — a persistent host, unlike Vercel.
+# The frontend deploys separately to Vercel (see vercel.json).
+# Railway/Fly work the same way conceptually; this file is Render-specific.
+services:
+  - type: web
+    name: tripreport-backend
+    runtime: node
+    plan: free # free web services sleep after ~15 min idle (first webhook after idle is slow; LINE retries). Upgrade to keep warm.
+    rootDir: backend
+    buildCommand: npm ci --include=dev && npm run build
+    # db:push applies the Drizzle schema, then the server starts. Render injects PORT automatically.
+    startCommand: npm run db:push && npm run start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # Set the rest as secrets in the Render dashboard (sync:false = not stored in this file):
+      - key: FRONTEND_URL # your Vercel URL, e.g. https://tripreport-line.vercel.app (used for CORS)
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: CLERK_PUBLISHABLE_KEY
+        sync: false
+      - key: CLERK_SECRET_KEY
+        sync: false
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: ANTHROPIC_MODEL # optional; default claude-opus-4-8
+        sync: false
+      - key: LINE_INGEST_KEY
+        sync: false
+      - key: LINE_CHANNEL_ACCESS_TOKEN
+        sync: false
+      - key: LINE_CHANNEL_SECRET
+        sync: false
+      - key: ADMIN_EMAIL
+        sync: false
